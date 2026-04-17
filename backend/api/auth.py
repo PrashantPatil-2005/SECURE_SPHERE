@@ -42,6 +42,36 @@ def _get_db_connection():
         password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
     )
 
+def _ensure_auth_schema():
+    """Create auth table and seed users for fresh cloud databases."""
+    conn = None
+    try:
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id SERIAL PRIMARY KEY,
+                        username VARCHAR(50) NOT NULL UNIQUE,
+                        email VARCHAR(100) NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        role VARCHAR(20) DEFAULT 'user',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    );
+                """)
+                cur.execute("""
+                    INSERT INTO users (username, email, password_hash, role) VALUES
+                    ('admin', 'admin@example.com', 'admin123', 'admin'),
+                    ('user1', 'user1@example.com', 'password123', 'user'),
+                    ('user2', 'user2@example.com', 'securepass', 'user')
+                    ON CONFLICT (username) DO NOTHING;
+                """)
+    except psycopg2.Error as exc:
+        logger.error("Could not ensure auth schema: %s", exc)
+    finally:
+        if conn:
+            conn.close()
+
 
 def _fetch_user_by_username(username):
     """Query the users table and return the row as a dict, or None."""
@@ -102,6 +132,7 @@ def token_required(f):
 @auth_bp.route("/login", methods=["POST"])
 def login():
     """Authenticate a user and return a JWT."""
+    _ensure_auth_schema()
 
     # 1. Parse request body
     body = request.get_json(silent=True)
