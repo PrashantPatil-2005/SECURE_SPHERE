@@ -221,7 +221,7 @@ attack-stealth:
 attack-all:
 	docker-compose run --rm attack-simulator all
 
-# New named scenarios A / B / C
+# New named scenarios A / B / C (docker attack-simulator variants)
 attack-a: ## Scenario A: Brute Force → Credential Compromise → Data Exfiltration
 	docker-compose run --rm attack-simulator python run_all.py --scenario a
 
@@ -233,6 +233,29 @@ attack-c: ## Scenario C: Multi-Hop Lateral Movement across 3+ services
 
 attack-abc: ## Run all three named scenarios in sequence
 	docker-compose run --rm attack-simulator python run_all.py --scenario all
+
+# Host-run attacker scenarios (attacker/ package, talk to localhost endpoints).
+# Layer background noise with NOISE=1: `make attacker-a NOISE=1 SPEED=fast`
+SPEED ?= normal
+NOISE ?=
+NOISE_FLAG := $(if $(NOISE),--noise,)
+
+attacker-a: ## Host-run Scenario A (brute force → cred compromise → exfil, 4 stages)
+	python -m attacker.scenario_a --speed $(SPEED) $(NOISE_FLAG)
+
+attacker-b: ## Host-run Scenario B (recon → SQLi → priv esc, 3 stages)
+	python -m attacker.scenario_b --speed $(SPEED) $(NOISE_FLAG)
+
+attacker-c: ## Host-run Scenario C (multi-hop lateral movement, 4 services)
+	python -m attacker.scenario_c --speed $(SPEED) $(NOISE_FLAG)
+
+attacker-abc: attacker-a attacker-b attacker-c ## Run all three host scenarios in sequence
+
+attacker-noise: ## Standalone background-noise generator (DURATION=60 RATE=2)
+	python -m attacker.traffic_generator --duration $(or $(DURATION),60) --rate $(or $(RATE),2)
+
+test-scenarios: ## Run scenario regression tests (mocked — no backend needed)
+	python -m pytest tests/test_scenarios.py -v
 
 attack-demo: ## Run full kill chain at demo speed for live presentations
 	docker-compose run --rm attack-simulator python run_all.py --scenario all --speed demo
