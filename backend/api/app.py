@@ -4,6 +4,7 @@ import json
 import uuid
 import threading
 import logging
+from pathlib import Path
 import redis
 import requests
 from datetime import datetime, timedelta
@@ -821,6 +822,34 @@ def _ensure_kill_chain_status_columns():
     except Exception as exc:
         logger.warning("Could not ensure kill_chains status columns: %s", exc)
 
+def _bootstrap_database_schema():
+    """
+    Initialize required PostgreSQL tables on first boot.
+    This keeps cloud deployments (e.g., Render managed Postgres) from
+    failing when the database starts empty.
+    """
+    sql_path = Path(__file__).resolve().parents[2] / "scripts" / "init_db.sql"
+    if not sql_path.exists():
+        logger.warning("DB bootstrap skipped: %s not found", sql_path)
+        return
+
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv("POSTGRES_HOST", "database"),
+            port=int(os.getenv("POSTGRES_PORT", 5432)),
+            dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
+            user=os.getenv("POSTGRES_USER", "securisphere_user"),
+            password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
+        )
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(sql_path.read_text(encoding="utf-8"))
+        conn.close()
+        logger.info("Database bootstrap completed from %s", sql_path)
+    except Exception as exc:
+        logger.warning("Database bootstrap skipped due to error: %s", exc)
+
 
 @app.route('/api/incidents/<incident_id>/status', methods=['PATCH'])
 def update_incident_status(incident_id):
@@ -1114,6 +1143,7 @@ def _heartbeat_loop():
 
 if __name__ == '__main__':
     connect_redis()
+    _bootstrap_database_schema()
     _ensure_kill_chain_status_columns()
 
     # Start threads
