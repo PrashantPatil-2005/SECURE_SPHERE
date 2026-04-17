@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ────────────────────────────── */
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  @apply font-sans bg-base-950 text-base-100;
+  overflow-y: scroll;
+}
+
+/* ── Scrollbar ───────────────────────── */
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(180,190,210,0.10); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(180,190,210,0.20); }
+
+::selection { background: rgba(107,134,179,0.28); color: #e3e6ed; }
+
+/* ── Light mode overrides ────────────────
+   Warm paper palette — intentionally off-white (#fafaf7) rather than
+   cool gray-50, and opaque borders rather than translucent-black. */
+
+html:not(.dark) body {
+  background-color: #fafaf7;
+  color: #1a1d28;
+}
+
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: rgba(26,29,40,0.14);
+}
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: rgba(26,29,40,0.24);
+}
+
+html:not(.dark) ::selection {
+  background: rgba(107,134,179,0.22);
+  color: #1a1d28;
+}
+
+/* Surface scale — warm whites */
+html:not(.dark) .bg-base-800  { background-color: #ffffff; }
+html:not(.dark) .bg-base-900  { background-color: #f7f5f0; }
+html:not(.dark) .bg-base-950  { background-color: #fafaf7; }
+html:not(.dark) .bg-base-700  { background-color: #f3f1eb; }
+html:not(.dark) .bg-base-700\/50 { background-color: rgba(243,241,235,0.8); }
+html:not(.dark) .bg-base-900\/40 { background-color: rgba(247,245,240,0.6); }
+html:not(.dark) .bg-base-900\/80 { background-color: rgba(247,245,240,0.88); }
+
+/* Text scale */
+html:not(.dark) .text-base-100 { color: #1a1d28; }
+html:not(.dark) .text-base-200 { color: #2a2f3d; }
+html:not(.dark) .text-base-300 { color: #3f4555; }
+html:not(.dark) .text-base-400 { color: #5c637a; }
+html:not(.dark) .text-base-500 { color: #8b92a3; }
+html:not(.dark) .text-base-600 { color: #abb2c3; }
+
+/* Translucent-white layering → warm opaque equivalents */
+html:not(.dark) .border-white\/\[0\.03\],
+html:not(.dark) .border-white\/\[0\.05\],
+html:not(.dark) .border-white\/\[0\.07\],
+html:not(.dark) .border-white\/10 {
+  border-color: #e2dfd6;
+}
+
+html:not(.dark) .bg-white\/\[0\.02\],
+html:not(.dark) .bg-white\/\[0\.03\],
+html:not(.dark) .bg-white\/\[0\.04\],
+html:not(.dark) .bg-white\/\[0\.06\],
+html:not(.dark) .bg-white\/\[0\.08\] {
+  background-color: #f3f1eb;
+}
+
+html:not(.dark) .hover\:bg-white\/\[0\.02\]:hover,
+html:not(.dark) .hover\:bg-white\/\[0\.03\]:hover,
+html:not(.dark) .hover\:bg-white\/\[0\.04\]:hover,
+html:not(.dark) .hover\:bg-white\/\[0\.06\]:hover {
+  background-color: #ece9df;
+}
+
+/* ── Utilities ───────────────────────── */
+
+.font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

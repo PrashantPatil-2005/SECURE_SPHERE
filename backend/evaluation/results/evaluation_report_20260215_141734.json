@@ -1,0 +1,164 @@
+{
+  "evaluation_id": "20260215_141550",
+  "start_time": null,
+  "end_time": null,
+  "system_info": {},
+  "scenarios": [
+    {
+      "scenario_name": "Benign Traffic",
+      "description": "False Positive Test",
+      "is_benign": true,
+      "attack_duration_seconds": 5.6,
+      "raw_events": {
+        "network": 0,
+        "api": 0,
+        "auth": 1,
+        "total": 1
+      },
+      "incidents": {
+        "count": 0,
+        "details": []
+      },
+      "metrics": {
+        "detection_rate": "N/A",
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 100.0,
+        "mean_time_to_detect_seconds": null,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 100,
+        "critical_entities": 0,
+        "threatening_entities": 1
+      }
+    },
+    {
+      "scenario_name": "Full Kill Chain",
+      "description": "Recon -> Exploit -> Exfil",
+      "is_benign": false,
+      "attack_duration_seconds": 0.2,
+      "raw_events": {
+        "network": 0,
+        "api": 1,
+        "auth": 0,
+        "total": 1
+      },
+      "incidents": {
+        "count": 0,
+        "details": []
+      },
+      "metrics": {
+        "detection_rate": 0.0,
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 100.0,
+        "mean_time_to_detect_seconds": null,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 850,
+        "critical_entities": 1,
+        "threatening_entities": 0
+      }
+    },
+    {
+      "scenario_name": "API Abuse",
+      "description": "Fuzzing & Injection",
+      "is_benign": false,
+      "attack_duration_seconds": 0.7,
+      "raw_events": {
+        "network": 0,
+        "api": 0,
+        "auth": 0,
+        "total": 0
+      },
+      "incidents": {
+        "count": 0,
+        "details": []
+      },
+      "metrics": {
+        "detection_rate": 0.0,
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 0.0,
+        "mean_time_to_detect_seconds": null,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 50,
+        "critical_entities": 0,
+        "threatening_entities": 0
+      }
+    },
+    {
+      "scenario_name": "Credential Attack",
+      "description": "Brute Force & Stuffing",
+      "is_benign": false,
+      "attack_duration_seconds": 0.2,
+      "raw_events": {
+        "network": 0,
+        "api": 0,
+        "auth": 0,
+        "total": 0
+      },
+      "incidents": {
+        "count": 0,
+        "details": []
+      },
+      "metrics": {
+        "detection_rate": 0.0,
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 0.0,
+        "mean_time_to_detect_seconds": null,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 0,
+        "critical_entities": 0,
+        "threatening_entities": 0
+      }
+    },
+    {
+      "scenario_name": "Stealth Attack",
+      "description": "Low & Slow",
+      "is_benign": false,
+      "attack_duration_seconds": 6.0,
+      "raw_events": {
+        "network": 0,
+        "api": 3,
+        "auth": 0,
+        "total": 3
+      },
+      "incidents": {
+        "count": 1,
+        "details": [
+          {
+            "type": "critical_exploit_attempt",
+            "severity": "high",
+            "layers": [
+              "api"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "detection_rate": 100.0,
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 66.7,
+        "mean_time_to_detect_seconds": 3.5,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 145,
+        "critical_entities": 0,
+        "threatening_entities": 1
+      }
+    }
+  ],
+  "overall_metrics": {},
+  "comparison": {},
+  "raw_data": {}
+}

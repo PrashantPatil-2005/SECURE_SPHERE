@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - ShopSphere</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .navbar { box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .sensitive-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .data-block {
+            background: #1e1e2e;
+            color: #a6e3a1;
+            border-radius: 8px;
+            padding: 16px;
+            max-height: 350px;
+            overflow-y: auto;
+            font-size: 0.82rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 12px;
+        }
+        .stat-card .num { font-size: 2rem; font-weight: 700; }
+        .stat-card .label { font-size: 0.85rem; color: #6c757d; }
+    </style>
+</head>
+
+<body>
+
+    <!-- NAVBAR -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold" href="index.html"><i class="bi bi-box-seam"></i> ShopSphere</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li><a class="nav-link" href="index.html">Home</a></li>
+                    <li><a class="nav-link" href="files.html">My Files</a></li>
+                    <li><a class="nav-link active" aria-current="page" href="admin.html">Admin</a></li>
+                    <li><a class="nav-link" href="#">Support</a></li>
+                </ul>
+                <div class="d-flex ms-lg-3 mt-2 mt-lg-0">
+                    <a href="login.html" class="btn btn-outline-light"><i class="bi bi-person-circle"></i> Login</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- OWASP BANNER -->
+    <div class="container mt-3">
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+            <i class="bi bi-exclamation-triangle-fill fs-3 me-3"></i>
+            <div>
+                <strong>This page has no authentication</strong> — demonstrating <strong>Broken Access Control (OWASP A01)</strong>.
+                In a real application, admin endpoints must require authentication and authorization checks.
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN DASHBOARD -->
+    <div class="container py-4">
+        <h2 class="mb-4"><i class="bi bi-shield-lock"></i> Admin Dashboard</h2>
+
+        <!-- STATS CARDS -->
+        <div class="row g-4 mb-4">
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="num text-primary">1,247</div>
+                    <div class="label">Total Users</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="num text-success">$84,320</div>
+                    <div class="label">Revenue (MTD)</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="num text-warning">342</div>
+                    <div class="label">Orders Today</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="num text-danger">18</div>
+                    <div class="label">Security Alerts</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SENSITIVE DATA SECTIONS -->
+        <div class="row g-4 mb-4">
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold"><i class="bi bi-gear"></i> Server Configuration</span>
+                        <span class="sensitive-badge">Sensitive Data Exposed</span>
+                    </div>
+                    <div class="card-body">
+                        <pre class="data-block mb-0" id="configOutput">Loading configuration...</pre>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold"><i class="bi bi-people"></i> User Export</span>
+                        <span class="sensitive-badge">Sensitive Data Exposed</span>
+                    </div>
+                    <div class="card-body">
+                        <pre class="data-block mb-0" id="usersOutput">Loading users...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- USER TABLE PLACEHOLDER -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-light fw-semibold"><i class="bi bi-table"></i> User Management</div>
+            <div class="card-body p-0">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr><th>#</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>1</td><td>admin</td><td>admin@shopsphere.demo</td><td><span class="badge bg-danger">Admin</span></td><td><span class="badge bg-success">Active</span></td></tr>
+                        <tr><td>2</td><td>john_doe</td><td>john@shopsphere.demo</td><td><span class="badge bg-primary">User</span></td><td><span class="badge bg-success">Active</span></td></tr>
+                        <tr><td>3</td><td>jane_smith</td><td>jane@shopsphere.demo</td><td><span class="badge bg-primary">User</span></td><td><span class="badge bg-secondary">Inactive</span></td></tr>
+                        <tr><td>4</td><td>bob_manager</td><td>bob@shopsphere.demo</td><td><span class="badge bg-warning text-dark">Manager</span></td><td><span class="badge bg-success">Active</span></td></tr>
+                        <tr><td>5</td><td>test_user</td><td>test@shopsphere.demo</td><td><span class="badge bg-primary">User</span></td><td><span class="badge bg-success">Active</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="bg-dark text-light py-4 mt-4">
+        <div class="container text-center">
+            <p class="text-muted small mb-0">&copy; 2024 ShopSphere. All rights reserved. &nbsp;|&nbsp; <i class="bi bi-shield-lock"></i> SecuriSphere Demo Environment v2.5</p>
+        </div>
+    </footer>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function renderJSON(elementId, data) {
+            var el = document.getElementById(elementId);
+            try {
+                if (typeof data === 'string') data = JSON.parse(data);
+                el.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                el.textContent = String(data);
+            }
+        }
+
+        // Auto-fetch sensitive endpoints on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            // GET /api/admin/config
+            fetch('/api/admin/config')
+                .then(function (r) { return r.text(); })
+                .then(function (d) { renderJSON('configOutput', d); })
+                .catch(function (e) { document.getElementById('configOutput').textContent = 'Error: ' + e.message; });
+
+            // GET /api/admin/users/export
+            fetch('/api/admin/users/export')
+                .then(function (r) { return r.text(); })
+                .then(function (d) { renderJSON('usersOutput', d); })
+                .catch(function (e) { document.getElementById('usersOutput').textContent = 'Error: ' + e.message; });
+        });
+    </script>
+
+</body>
+
+</html>

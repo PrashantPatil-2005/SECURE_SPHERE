@@ -1,0 +1,166 @@
+{
+  "evaluation_id": "20260215_133416",
+  "start_time": null,
+  "end_time": null,
+  "system_info": {},
+  "scenarios": [
+    {
+      "scenario_name": "Benign Traffic",
+      "description": "False Positive Test",
+      "is_benign": true,
+      "attack_duration_seconds": 5.7,
+      "raw_events": {
+        "network": 0,
+        "api": 0,
+        "auth": 0,
+        "total": 0
+      },
+      "incidents": {
+        "count": 0,
+        "details": []
+      },
+      "metrics": {
+        "detection_rate": "N/A",
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 0.0,
+        "mean_time_to_detect_seconds": null,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 0,
+        "critical_entities": 0,
+        "threatening_entities": 0
+      }
+    },
+    {
+      "scenario_name": "Full Kill Chain",
+      "description": "Recon -> Exploit -> Exfil",
+      "is_benign": false,
+      "attack_duration_seconds": 0.2,
+      "raw_events": {
+        "network": 0,
+        "api": 5,
+        "auth": 1,
+        "total": 6
+      },
+      "incidents": {
+        "count": 3,
+        "details": [
+          {
+            "type": "data_exfiltration_risk",
+            "severity": "high",
+            "layers": [
+              "api"
+            ]
+          },
+          {
+            "type": "brute_force_attempt",
+            "severity": "medium",
+            "layers": [
+              "auth"
+            ]
+          },
+          {
+            "type": "automated_attack_tool",
+            "severity": "high",
+            "layers": [
+              "api",
+              "auth"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "detection_rate": 100.0,
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 50.0,
+        "mean_time_to_detect_seconds": 1.5,
+        "cross_layer_detection_rate": 33.3,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 400,
+        "critical_entities": 1,
+        "threatening_entities": 0
+      }
+    },
+    {
+      "scenario_name": "API Abuse",
+      "description": "Fuzzing & Injection",
+      "is_benign": false,
+      "attack_duration_seconds": 0.7,
+      "raw_events": {
+        "network": 0,
+        "api": 4,
+        "auth": 0,
+        "total": 4
+      },
+      "incidents": {
+        "count": 1,
+        "details": [
+          {
+            "type": "data_exfiltration_risk",
+            "severity": "high",
+            "layers": [
+              "api"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "detection_rate": 100.0,
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 75.0,
+        "mean_time_to_detect_seconds": 1.5,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 250,
+        "critical_entities": 1,
+        "threatening_entities": 0
+      }
+    },
+    {
+      "scenario_name": "Credential Attack",
+      "description": "Brute Force & Stuffing",
+      "is_benign": false,
+      "attack_duration_seconds": 0.1,
+      "raw_events": {
+        "network": 0,
+        "api": 0,
+        "auth": 1,
+        "total": 1
+      },
+      "incidents": {
+        "count": 1,
+        "details": [
+          {
+            "type": "brute_force_attempt",
+            "severity": "medium",
+            "layers": [
+              "auth"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "detection_rate": 100.0,
+        "false_positive_rate": 0.0,
+        "alert_reduction_ratio": 0.0,
+        "mean_time_to_detect_seconds": 1.5,
+        "cross_layer_detection_rate": 0.0,
+        "correlation_accuracy": 100.0
+      },
+      "risk_scores": {
+        "max_score": 50,
+        "critical_entities": 0,
+        "threatening_entities": 0
+      }
+    }
+  ],
+  "overall_metrics": {},
+  "comparison": {},
+  "raw_data": {}
+}

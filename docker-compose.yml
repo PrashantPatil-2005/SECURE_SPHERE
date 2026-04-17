@@ -1,0 +1,433 @@
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: securisphere-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  database:
+    image: postgres:15-alpine
+    container_name: securisphere-db
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
+      POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-securisphere_user} -d ${POSTGRES_DB:-securisphere_db}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api-server:
+    build:
+      context: ./backend/targets/api-server
+      dockerfile: Dockerfile
+    container_name: securisphere-api
+    ports:
+      - "${API_SERVER_PORT:-5000}:5000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/api/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - api-logs:/var/log/securisphere
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  auth-service:
+    build:
+      context: ./backend/targets/auth-service
+      dockerfile: Dockerfile
+    container_name: securisphere-auth
+    ports:
+      - "${AUTH_SERVICE_PORT:-5001}:5001"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5001/auth/status" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - auth-logs:/var/log/securisphere
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  network-monitor:
+    build:
+      context: ./backend/monitors/network
+      dockerfile: Dockerfile
+    container_name: securisphere-netmon
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    network_mode: "service:api-server"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      MONITOR_INTERFACE: eth0
+    depends_on:
+      redis:
+        condition: service_healthy
+      api-server:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api-monitor:
+    build:
+      context: ./backend/monitors/api
+      dockerfile: Dockerfile
+    container_name: securisphere-apimon
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./samples/pcap:/app/samples/pcap
+      - api-logs:/var/log/securisphere
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      TARGET_API: http://api-server:5000
+      TOPOLOGY_URL: http://topology-collector:5080
+    depends_on:
+      redis:
+        condition: service_healthy
+      api-server:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5050/monitor/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  auth-monitor:
+    build:
+      context: ./backend/monitors/auth
+      dockerfile: Dockerfile
+    container_name: securisphere-authmon
+    ports:
+      - "5060:5060"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      TOPOLOGY_URL: http://topology-collector:5080
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5060/monitor/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    volumes:
+      - auth-logs:/var/log/securisphere
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: ./backend/api
+      dockerfile: Dockerfile
+    container_name: securisphere-backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      FLASK_ENV: development
+      POSTGRES_HOST: database
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
+      POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
+      JWT_SECRET: ${JWT_SECRET:-securisphere-jwt-secret-2024}
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+      topology-collector:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: securisphere-dashboard
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  correlation-engine:
+    build:
+      context: ./backend/engine
+      dockerfile: correlation/Dockerfile
+    container_name: securisphere-correlator
+    ports:
+      - "5070:5070"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      CORRELATION_WINDOW: ${CORRELATION_WINDOW:-900}
+      RISK_DECAY_RATE: ${RISK_DECAY_RATE:-5}
+      RISK_DECAY_INTERVAL: ${RISK_DECAY_INTERVAL:-60}
+      POSTGRES_HOST: database
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
+      POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
+      HF_API_TOKEN: ${HF_API_TOKEN:-}
+      HF_MODEL: ${HF_MODEL:-Qwen/Qwen2.5-72B-Instruct}
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+      topology-collector:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5070/engine/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  topology-collector:
+    build:
+      context: ./backend/topology
+      dockerfile: Dockerfile
+    container_name: securisphere-topology
+    ports:
+      - "5080:5080"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      TOPOLOGY_REFRESH_INTERVAL: 10
+      COMPOSE_PROJECT_NAME: securisphere
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  attack-simulator:
+    build:
+      context: ./backend/simulation
+      dockerfile: Dockerfile
+    container_name: securisphere-attacker
+    networks:
+      - securisphere-network
+    depends_on:
+      api-server:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      correlation-engine:
+        condition: service_healthy
+    profiles:
+      - attack
+    environment:
+      API_URL: http://api-server:5000
+      AUTH_URL: http://auth-service:5001
+      BACKEND_URL: http://backend:8000
+      ENGINE_URL: http://correlation-engine:5070
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web-app:
+    build:
+      context: ./backend/targets/web-app
+      dockerfile: Dockerfile
+    container_name: securisphere-webapp
+    hostname: web-app
+    networks:
+      - securisphere-network
+    ports:
+      - "8080:80"
+    depends_on:
+      - api-server
+      - auth-service
+    restart: unless-stopped
+
+  browser-monitor:
+    build:
+      context: ./backend/monitors/browser
+      dockerfile: Dockerfile
+    container_name: securisphere-browsermon
+    ports:
+      - "5090:5090"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      BROWSER_EVENTS_CHANNEL: security_events
+      BROWSER_MONITOR_PORT: 5090
+      POSTGRES_HOST: database
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
+      POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
+      TOPOLOGY_URL: http://topology-collector:5080
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5090/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  securisphere-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+
+volumes:
+  redis-data:
+  postgres-data:
+  api-logs:
+  auth-logs:

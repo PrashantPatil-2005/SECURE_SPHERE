@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+**/CLAUDE.md
+.claude/
+
+# Node
+node_modules/
+build/
+.next/
+
+# Docker
+*.log
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+logs/*.log
+evaluation/results/*.json

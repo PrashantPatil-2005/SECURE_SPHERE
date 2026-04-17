@@ -1,0 +1,34 @@
+name: CI — Build & Smoke Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build all containers
+        run: docker compose build
+
+      - name: Start services
+        run: docker compose up -d
+
+      - name: Wait for services to initialise
+        run: sleep 20
+
+      - name: Smoke test — Backend health
+        run: curl -f http://localhost:8000/api/health
+
+      - name: Smoke test — Topology Collector health
+        run: curl -f http://localhost:5080/health
+
+      - name: Tear down
+        if: always()
+        run: docker compose down
