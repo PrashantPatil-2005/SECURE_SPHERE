@@ -56,10 +56,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: securisphere-backend
-          property: url
+        value: https://securisphere-backend.onrender.com
 
 databases:
   - name: securisphere-db
