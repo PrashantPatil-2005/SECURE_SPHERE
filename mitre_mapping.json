@@ -1,0 +1,228 @@
+{
+  "framework": "MITRE ATT&CK for Containers v14",
+  "description": "Mapping of SecuriSphere correlation rules to MITRE ATT&CK technique IDs. Covers the 6 core Containers techniques (T1110, T1078, T1021, T1068, T1046, T1041) plus extended coverage (T1570 lateral movement, T1548 privilege escalation, T1526 cloud service discovery).",
+  "last_updated": "2026-04-17",
+  "techniques": {
+    "T1046": {
+      "name": "Network Service Discovery",
+      "tactic": "Discovery",
+      "description": "Adversaries attempt to get a listing of services running on remote hosts and local network infrastructure devices, including those that may be vulnerable to remote software exploitation."
+    },
+    "T1078": {
+      "name": "Valid Accounts",
+      "tactic": "Initial Access / Persistence / Privilege Escalation / Defense Evasion",
+      "description": "Adversaries may obtain and abuse credentials of existing accounts as a means of gaining Initial Access, Persistence, Privilege Escalation, or Defense Evasion."
+    },
+    "T1021": {
+      "name": "Remote Services",
+      "tactic": "Lateral Movement",
+      "description": "Adversaries may use valid accounts to log into a service that accepts remote connections, such as telnet, SSH, and VNC."
+    },
+    "T1068": {
+      "name": "Exploitation for Privilege Escalation",
+      "tactic": "Privilege Escalation",
+      "description": "Adversaries may exploit software vulnerabilities in an attempt to elevate privileges. Exploitation of a software vulnerability occurs when an adversary takes advantage of a programming error."
+    },
+    "T1110": {
+      "name": "Brute Force",
+      "tactic": "Credential Access",
+      "description": "Adversaries may use brute force techniques to gain access to accounts when passwords are unknown or when password hashes are obtained."
+    },
+    "T1110.004": {
+      "name": "Credential Stuffing",
+      "tactic": "Credential Access",
+      "description": "Adversaries may use credentials obtained from breach dumps of unrelated accounts to gain access to target accounts through credential overlap."
+    },
+    "T1041": {
+      "name": "Exfiltration Over C2 Channel",
+      "tactic": "Exfiltration",
+      "description": "Adversaries may steal data by exfiltrating it over an existing command and control channel."
+    },
+    "T1570": {
+      "name": "Lateral Tool Transfer",
+      "tactic": "Lateral Movement",
+      "description": "Adversaries may transfer tools or other files between systems in a compromised environment."
+    },
+    "T1548": {
+      "name": "Abuse Elevation Control Mechanism",
+      "tactic": "Privilege Escalation / Defense Evasion",
+      "description": "Adversaries may circumvent mechanisms designed to control elevate privileges to gain higher-level permissions."
+    },
+    "T1526": {
+      "name": "Cloud Service Discovery",
+      "tactic": "Discovery",
+      "description": "An adversary may attempt to enumerate the cloud services running on a system after gaining access."
+    },
+    "T1190": {
+      "name": "Exploit Public-Facing Application",
+      "tactic": "Initial Access",
+      "description": "Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially access a network."
+    },
+    "T1595": {
+      "name": "Active Scanning",
+      "tactic": "Reconnaissance",
+      "description": "Adversaries may execute active reconnaissance scans to gather information that can be used during targeting."
+    },
+    "T1003": {
+      "name": "OS Credential Dumping",
+      "tactic": "Credential Access",
+      "description": "Adversaries may attempt to dump credentials to obtain account login and credential material."
+    },
+    "T1071": {
+      "name": "Application Layer Protocol",
+      "tactic": "Command and Control",
+      "description": "Adversaries may communicate using OSI application layer protocols to avoid detection by blending in with existing traffic."
+    },
+    "T1530": {
+      "name": "Data from Cloud Storage",
+      "tactic": "Collection",
+      "description": "Adversaries may access data objects from improperly secured cloud storage."
+    },
+    "T1083": {
+      "name": "File and Directory Discovery",
+      "tactic": "Discovery",
+      "description": "Adversaries may enumerate files and directories to find information about the environment."
+    },
+    "T1048": {
+      "name": "Exfiltration Over Alternative Protocol",
+      "tactic": "Exfiltration",
+      "description": "Adversaries may steal data by exfiltrating it over a different protocol than that of the existing C2 channel."
+    }
+  },
+  "rule_mappings": {
+    "recon_to_exploit": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_recon_to_exploit",
+      "description": "Port scan followed by SQL injection / path traversal from same source IP within 10 minutes",
+      "techniques": ["T1046", "T1595", "T1190", "T1526"],
+      "primary_tactic": "Reconnaissance → Initial Access",
+      "severity": "critical"
+    },
+    "credential_compromise": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_credential_compromise",
+      "description": "Successful login after brute force / credential stuffing against same account",
+      "techniques": ["T1110", "T1078", "T1003"],
+      "primary_tactic": "Credential Access",
+      "severity": "critical"
+    },
+    "full_kill_chain": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_full_kill_chain",
+      "description": "Multi-vector campaign crossing network, api, and auth layers from same IP",
+      "techniques": ["T1046", "T1595", "T1190", "T1110", "T1021", "T1570"],
+      "primary_tactic": "Multi-stage",
+      "severity": "critical"
+    },
+    "api_auth_combined": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_api_auth_combined",
+      "description": "Source IP hitting API and Auth endpoints simultaneously (automated tooling)",
+      "techniques": ["T1110", "T1190", "T1071", "T1078"],
+      "primary_tactic": "Credential Access / Initial Access",
+      "severity": "high"
+    },
+    "distributed_attack": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_distributed_attack",
+      "description": "Same account targeted from 3+ distinct IPs (credential stuffing from botnet)",
+      "techniques": ["T1110.004", "T1078"],
+      "primary_tactic": "Credential Access",
+      "severity": "critical"
+    },
+    "data_exfiltration": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_data_exfiltration",
+      "description": "Sensitive data endpoint accessed after SQL injection / path traversal",
+      "techniques": ["T1530", "T1190", "T1041", "T1048"],
+      "primary_tactic": "Collection / Exfiltration",
+      "severity": "high"
+    },
+    "persistent_threat": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_persistent_threat",
+      "description": "10+ events over 5+ minutes with 3+ distinct attack types from same IP",
+      "techniques": ["T1595", "T1071"],
+      "primary_tactic": "Reconnaissance / C2",
+      "severity": "high"
+    },
+    "brute_force_attempt": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_brute_force_attempt",
+      "description": "Single brute force or credential stuffing event",
+      "techniques": ["T1110"],
+      "primary_tactic": "Credential Access",
+      "severity": "medium"
+    },
+    "critical_exploit_attempt": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_critical_exploit_attempt",
+      "description": "2+ critical exploit attempts (SQLi / XSS / path traversal) from same IP",
+      "techniques": ["T1190", "T1068"],
+      "primary_tactic": "Initial Access / Privilege Escalation",
+      "severity": "high"
+    },
+    "browser_sqli": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_browser_sqli",
+      "description": "Browser-layer SQL injection payload detected by client-side agent",
+      "techniques": ["T1190"],
+      "primary_tactic": "Initial Access",
+      "severity": "critical"
+    },
+    "browser_path_traversal": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_browser_path_traversal",
+      "description": "Browser-layer path traversal payload (../ or %2e%2e)",
+      "techniques": ["T1083"],
+      "primary_tactic": "Discovery",
+      "severity": "high"
+    },
+    "browser_brute_force": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_browser_brute_force",
+      "description": "5+ auth_failure events from same site_id within 60 seconds",
+      "techniques": ["T1110"],
+      "primary_tactic": "Credential Access",
+      "severity": "high"
+    },
+    "browser_recon_scan": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_browser_recon_scan",
+      "description": "10+ distinct target entities probed within 30 seconds",
+      "techniques": ["T1046", "T1526"],
+      "primary_tactic": "Discovery",
+      "severity": "medium"
+    },
+    "browser_bruteforce_to_exfil": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_browser_bruteforce_to_exfil",
+      "description": "Kill chain A: 5+ auth failures followed by data_access within 5 minutes",
+      "techniques": ["T1110", "T1530", "T1041"],
+      "primary_tactic": "Credential Access → Exfiltration",
+      "severity": "critical"
+    },
+    "browser_recon_to_privesc": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_browser_recon_to_privesc",
+      "description": "Kill chain B: Recon scan of 10+ entities followed by privilege_change within 3 minutes",
+      "techniques": ["T1046", "T1078", "T1548", "T1068"],
+      "primary_tactic": "Discovery → Privilege Escalation",
+      "severity": "high"
+    },
+    "browser_multi_hop": {
+      "rule_file": "backend/engine/correlation/correlation_engine.py",
+      "rule_name": "rule_browser_multi_hop",
+      "description": "Kill chain C: 3+ distinct target entities hit in sequence within 2 minutes",
+      "techniques": ["T1021", "T1570"],
+      "primary_tactic": "Lateral Movement",
+      "severity": "high"
+    }
+  },
+  "coverage_summary": {
+    "total_rules": 16,
+    "total_techniques": 17,
+    "core_containers_coverage": ["T1110", "T1078", "T1021", "T1068", "T1046", "T1041"],
+    "extended_coverage": ["T1570", "T1548", "T1526"]
+  }
+}

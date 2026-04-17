@@ -939,7 +939,7 @@ def mitre_mapping():
 
     # Augment with descriptions
     technique_info = {
-        "T1046":     "Network Service Scanning",
+        "T1046":     "Network Service Discovery",
         "T1595":     "Active Scanning",
         "T1190":     "Exploit Public-Facing Application",
         "T1110":     "Brute Force",
@@ -951,6 +951,31 @@ def mitre_mapping():
         "T1530":     "Data from Cloud Storage Object",
         "T1083":     "File and Directory Discovery",
         "T1048":     "Exfiltration Over Alternative Protocol",
+        "T1068":     "Exploitation for Privilege Escalation",
+        "T1041":     "Exfiltration Over C2 Channel",
+        "T1570":     "Lateral Tool Transfer",
+        "T1548":     "Abuse Elevation Control Mechanism",
+        "T1526":     "Cloud Service Discovery",
+    }
+
+    technique_descriptions = {
+        "T1046":     "Adversaries enumerate running services on remote hosts to identify exploitable targets.",
+        "T1595":     "Active reconnaissance scans to gather information about the target network.",
+        "T1190":     "Exploit a weakness in an Internet-facing host such as SQL injection or XSS.",
+        "T1110":     "Systematic password guessing against authentication endpoints.",
+        "T1110.004": "Using credential dumps from breaches to test against target accounts.",
+        "T1078":     "Using existing valid credentials to access systems.",
+        "T1003":     "Dumping credentials from OS memory or password stores.",
+        "T1021":     "Using valid accounts to access remote services for lateral movement.",
+        "T1071":     "Communication over OSI application-layer protocols to blend with normal traffic.",
+        "T1530":     "Accessing data objects from improperly secured cloud storage.",
+        "T1083":     "Enumerating files and directories to discover sensitive data.",
+        "T1048":     "Stealing data over a different protocol than the C2 channel.",
+        "T1068":     "Exploiting a software vulnerability to elevate privileges.",
+        "T1041":     "Exfiltrating stolen data over the same channel used for command and control.",
+        "T1570":     "Transferring tools or files between compromised systems for lateral movement.",
+        "T1548":     "Circumventing privilege elevation controls to gain higher permissions.",
+        "T1526":     "Enumerating cloud services available after gaining initial access.",
     }
 
     result = []
@@ -958,6 +983,7 @@ def mitre_mapping():
         result.append({
             "technique_id":   technique,
             "name":           technique_info.get(technique, "Unknown Technique"),
+            "description":    technique_descriptions.get(technique, ""),
             "hit_count":      count,
             "incident_ids":   technique_incidents[technique][:10],  # truncate
         })
@@ -976,6 +1002,7 @@ def mitre_mapping():
                     result.append({
                         "technique_id": tech,
                         "name": technique_info.get(tech, "Unknown Technique"),
+                        "description": technique_descriptions.get(tech, ""),
                         "hit_count": 0,
                         "engine_hit_count": hits,
                         "incident_ids": [],

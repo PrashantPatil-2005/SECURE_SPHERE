@@ -669,7 +669,7 @@ class CorrelationEngine:
             f"Source {source_ip} performed port recon followed by {new_event['event_type']}.",
             "critical", 0.92, source_ip,
             [scans[-1], new_event], ["network", "api"],
-            ["T1046", "T1595", "T1190"],
+            ["T1046", "T1595", "T1190", "T1526"],
             ["Block IP at firewall", "Audit API logs", "Apply WAF rules"],
         )
 
@@ -719,7 +719,7 @@ class CorrelationEngine:
             ),
             "critical", 0.97, source_ip,
             ip_events, list(layers),
-            ["T1046", "T1595", "T1190", "T1110", "T1021"],
+            ["T1046", "T1595", "T1190", "T1110", "T1021", "T1570"],
             ["ISOLATE HOST IMMEDIATELY", "Trigger incident response", "Capture forensic snapshot"],
         )
 
@@ -743,7 +743,7 @@ class CorrelationEngine:
             f"Source {source_ip} targeting API and Auth endpoints simultaneously.",
             "high", 0.88, source_ip,
             ip_events, ["api", "auth"],
-            ["T1110", "T1190", "T1071"],
+            ["T1110", "T1190", "T1071", "T1078"],
             ["Rate limit IP", "Deploy CAPTCHA", "Block at load-balancer"],
         )
 
@@ -792,7 +792,7 @@ class CorrelationEngine:
             f"Source {source_ip} accessed sensitive endpoints after exploitation attempt.",
             "high", 0.85, source_ip,
             [exploits[-1], new_event], ["api"],
-            ["T1530", "T1190"],
+            ["T1530", "T1190", "T1041", "T1048"],
             ["Audit access logs", "Restrict sensitive endpoints", "Rotate exposed secrets"],
         )
 
@@ -867,7 +867,7 @@ class CorrelationEngine:
             f"Source {source_ip} performing {new_event['event_type']} ({len(same_type)} times).",
             "high", 0.90, source_ip,
             same_type, ["api"],
-            ["T1190"],
+            ["T1190", "T1068"],
             ["Block IP", "Apply virtual patch", "Review WAF ruleset"],
         )
 
@@ -1050,7 +1050,7 @@ class CorrelationEngine:
             ),
             "medium", 0.82, self._browser_source_ip(new_event),
             recent, ["browser"],
-            ["T1046"],
+            ["T1046", "T1526"],
             [
                 "Rate-limit source IP",
                 "Review URL enumeration logs",
@@ -1094,7 +1094,7 @@ class CorrelationEngine:
             ),
             "critical", 0.95, self._browser_source_ip(new_event),
             failures + [new_event], ["browser"],
-            ["T1110", "T1530"],
+            ["T1110", "T1530", "T1041"],
             [
                 "Revoke the active session immediately",
                 "Audit every record touched in the data_access",
@@ -1129,7 +1129,7 @@ class CorrelationEngine:
             ),
             "high", 0.90, self._browser_source_ip(new_event),
             recent + [new_event], ["browser"],
-            ["T1046", "T1078"],
+            ["T1046", "T1078", "T1548", "T1068"],
             [
                 "Revoke elevated session",
                 "Audit the privilege change event in auth logs",
@@ -1171,7 +1171,7 @@ class CorrelationEngine:
             ),
             "high", 0.85, self._browser_source_ip(new_event),
             recent, ["browser"],
-            ["T1021"],
+            ["T1021", "T1570"],
             [
                 "Audit the traversal path across the hit entities",
                 "Block source IP pending review",
