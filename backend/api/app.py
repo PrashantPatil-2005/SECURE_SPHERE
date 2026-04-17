@@ -38,6 +38,7 @@ app.register_blueprint(topology_checks_bp)
 # Redis Config
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+APP_PORT = int(os.getenv('PORT', os.getenv('BACKEND_PORT', 8000)))
 SERVER_START_TIME = datetime.utcnow()
 
 # Redis Connection
@@ -1129,9 +1130,9 @@ if __name__ == '__main__':
     print("========================================")
     print("  SecuriSphere Backend API v1.0.0")
     print("========================================")
-    print("  REST API:   http://0.0.0.0:8000")
-    print("  WebSocket:  ws://0.0.0.0:8000")
+    print(f"  REST API:   http://0.0.0.0:{APP_PORT}")
+    print(f"  WebSocket:  ws://0.0.0.0:{APP_PORT}")
     print(f"  Redis:      {REDIS_HOST}:{REDIS_PORT}")
     print("========================================")
     
-    socketio.run(app, host='0.0.0.0', port=8000, debug=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='0.0.0.0', port=APP_PORT, debug=False, allow_unsafe_werkzeug=True)

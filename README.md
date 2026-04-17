@@ -101,6 +101,30 @@ Access points:
 - 4 GB+ RAM available
 - Ports 3000, 5000–5001, 5050–5070, 5080, **5090**, 5432, 6379, 8000, 8080 available
 
+## Deploy on Render
+
+This repo now includes a Render Blueprint file: `render.yaml`.
+
+It provisions:
+- `securisphere-backend` (Python web service)
+- `securisphere-dashboard` (static frontend)
+- `securisphere-redis` (managed Redis)
+- `securisphere-db` (managed PostgreSQL)
+
+Deploy steps:
+
+1. Push this repo to GitHub.
+2. In Render, choose **New +** -> **Blueprint**.
+3. Select your repository and deploy using `render.yaml`.
+4. After deploy, open:
+   - Dashboard: Render URL for `securisphere-dashboard`
+   - API health: `<backend-url>/api/health`
+
+Notes:
+- Backend now reads Render's `PORT` automatically.
+- `VITE_API_URL` is wired to the backend service URL in `render.yaml`.
+- This cloud setup is a simplified deployment for dashboard/API use, not the full local 13+ container attack lab.
+
 ---
 
 ## Architecture

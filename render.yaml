@@ -1,0 +1,68 @@
+services:
+  - type: redis
+    name: securisphere-redis
+    ipAllowList: []
+    plan: free
+
+  - type: web
+    name: securisphere-backend
+    env: python
+    plan: free
+    rootDir: backend/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: securisphere-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: securisphere-redis
+          property: port
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: securisphere-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: securisphere-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: securisphere-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: securisphere-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: securisphere-db
+          property: password
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.10.14
+
+  - type: web
+    name: securisphere-dashboard
+    env: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: securisphere-backend
+          property: url
+
+databases:
+  - name: securisphere-db
+    databaseName: securisphere_db
+    user: securisphere_user
+    plan: free
