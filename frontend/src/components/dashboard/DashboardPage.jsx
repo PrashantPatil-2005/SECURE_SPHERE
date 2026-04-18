@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { buildKpiItems, pickFeaturedIncident } from './dashboardMetrics';
+import DemoBanner from './DemoBanner';
 import GridDashboard from './GridDashboard';
 import ModeSwitcher from './ModeSwitcher';
 import StoryDashboard from './StoryDashboard';
@@ -96,6 +97,7 @@ export default function DashboardPage({
 
   return (
     <div className="space-y-4 text-base-200">
+      <DemoBanner />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-base-100">Operations overview</h1>

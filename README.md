@@ -211,7 +211,7 @@ Run `make evaluate-full` to generate real MTTD measurements.
 | Scenario B | Reconnaissance → SQL Injection → Privilege Escalation | frontend | payment-service |
 | Scenario C | Multi-Hop Lateral Movement (4 hops) | auth-service | payment-service |
 
-**MTTD Comparison** (run `make mttd-markdown` to populate with real data):
+**MTTD Comparison** (detailed results in `experiment/` directory):
 
 | Scenario | MTTD — Raw Logs | MTTD — SecuriSphere | Reduction |
 |---|---|---|---|
@@ -219,7 +219,17 @@ Run `make evaluate-full` to generate real MTTD measurements.
 | Scenario B | — | — | — |
 | Scenario C | — | — | — |
 
-*Run `make evaluate-full` to fill in this table with measured results.*
+### Running MTTD Trials
+
+1. **Review protocol:** `cat experiment/protocol.md`
+2. **Run controlled trials:**
+   - Condition A (raw logs): `make attack-a`, `make attack-b`, `make attack-c` (3× each, no dashboard)
+   - Condition B (dashboard): Open SecuriSphere, run same attacks
+3. **Record results** in `experiment/raw_log_trials.md` and `experiment/securisphere_trials.md`
+4. **Generate metrics:** `make evaluate-full` (auto-generates from system logs)
+5. **See final report:** `cat experiment/results.md`
+
+Target reduction: **≥70% MTTD improvement with SecuriSphere dashboard**
 
 ---
 
