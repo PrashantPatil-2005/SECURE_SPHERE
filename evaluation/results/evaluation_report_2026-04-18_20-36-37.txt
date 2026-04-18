@@ -1,0 +1,8 @@
+SecuriSphere Evaluation Report
+Generated: 2026-04-18_20-36-37
+
+EXECUTIVE SUMMARY
+Overall Detection Rate: 0.0%
+Alert Reduction: 0.0%
+Average MTTD: 0.0s
+

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-18T10:03:57.649757+00:00",
+  "generated_at": "2026-04-18T15:19:43.329765+00:00",
   "backend_url": "http://localhost:8000",
   "runs_per_scenario": 3,
   "scenarios": [
@@ -10,12 +10,12 @@
         {
           "trial": 1,
           "scenario": "a",
-          "started_at": "2026-04-18T10:01:35.447560+00:00",
-          "scenario_seconds": 12.66,
+          "started_at": "2026-04-18T15:17:21.142805+00:00",
+          "scenario_seconds": 12.94,
           "exit_code": 0,
           "new_incidents": 1,
           "incident_ids": [
-            "122d252f-9760-46f4-9937-5551a4353087"
+            "54f3a1b4-fe81-4179-bfab-2846eb08efa1"
           ],
           "mttd_seconds_avg": 0.006,
           "mttd_seconds_all": [
@@ -33,16 +33,16 @@
         {
           "trial": 2,
           "scenario": "a",
-          "started_at": "2026-04-18T10:01:51.279269+00:00",
-          "scenario_seconds": 12.57,
+          "started_at": "2026-04-18T15:17:37.218243+00:00",
+          "scenario_seconds": 12.63,
           "exit_code": 0,
           "new_incidents": 1,
           "incident_ids": [
-            "ff5f57f9-b351-4f8f-bd49-40aadf016ac7"
+            "9f9d56a8-ee7e-4b43-ba0d-eb670087327a"
           ],
-          "mttd_seconds_avg": 0.003,
+          "mttd_seconds_avg": 0.004,
           "mttd_seconds_all": [
-            0.003
+            0.004
           ],
           "severities": [
             "medium"
@@ -56,16 +56,16 @@
         {
           "trial": 3,
           "scenario": "a",
-          "started_at": "2026-04-18T10:02:07.062070+00:00",
-          "scenario_seconds": 12.61,
+          "started_at": "2026-04-18T15:17:53.052876+00:00",
+          "scenario_seconds": 12.78,
           "exit_code": 0,
           "new_incidents": 1,
           "incident_ids": [
-            "767f4965-6c25-4c37-ba9a-b06876809d66"
+            "60ccb049-bb91-4933-941d-b3c648505926"
           ],
-          "mttd_seconds_avg": 0.001,
+          "mttd_seconds_avg": 0.003,
           "mttd_seconds_all": [
-            0.001
+            0.003
           ],
           "severities": [
             "medium"
@@ -79,7 +79,7 @@
       ],
       "verdict": {
         "pass": true,
-        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.003s across 3 runs)",
+        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.004s across 3 runs)",
         "total_new_incidents": 3
       }
     },
@@ -90,18 +90,18 @@
         {
           "trial": 1,
           "scenario": "b",
-          "started_at": "2026-04-18T10:02:22.860907+00:00",
-          "scenario_seconds": 13.19,
+          "started_at": "2026-04-18T15:18:09.021664+00:00",
+          "scenario_seconds": 13.12,
           "exit_code": 0,
           "new_incidents": 2,
           "incident_ids": [
-            "0e5ecf7b-bd26-4213-98cb-88f843381692",
-            "66dc5b51-f988-4049-933f-844ef8115c91"
+            "47064637-630d-4bdc-ba5f-51bb117c7663",
+            "821ecd7e-750e-4692-9b4e-007aec397cf2"
           ],
-          "mttd_seconds_avg": 0.142,
+          "mttd_seconds_avg": 0.148,
           "mttd_seconds_all": [
-            0.2,
-            0.083
+            0.212,
+            0.085
           ],
           "severities": [
             "high"
@@ -119,18 +119,18 @@
         {
           "trial": 2,
           "scenario": "b",
-          "started_at": "2026-04-18T10:02:39.309233+00:00",
-          "scenario_seconds": 13.32,
+          "started_at": "2026-04-18T15:18:25.290061+00:00",
+          "scenario_seconds": 13.19,
           "exit_code": 0,
           "new_incidents": 2,
           "incident_ids": [
-            "42e56d2f-6c51-4c78-ab1a-3f5c2127413a",
-            "e9a521ae-717a-4d14-8bbb-2fb8db6a125a"
+            "19066553-9048-423b-bc83-0c5d9e6c595e",
+            "cef91ebf-1eea-413c-b4f1-b4c240658ce2"
           ],
-          "mttd_seconds_avg": 0.15,
+          "mttd_seconds_avg": 0.136,
           "mttd_seconds_all": [
-            0.2,
-            0.099
+            0.194,
+            0.077
           ],
           "severities": [
             "high"
@@ -148,18 +148,18 @@
         {
           "trial": 3,
           "scenario": "b",
-          "started_at": "2026-04-18T10:02:55.807746+00:00",
-          "scenario_seconds": 13.2,
+          "started_at": "2026-04-18T15:18:41.690469+00:00",
+          "scenario_seconds": 13.32,
           "exit_code": 0,
           "new_incidents": 2,
           "incident_ids": [
-            "53b9c115-5a55-4d6e-9123-8289c3c86f60",
-            "890df46f-a282-4929-9e51-5a71264797fd"
+            "3eb8b684-243c-420f-9749-25c16f0914d4",
+            "f9aa9dec-f619-45a0-bfaf-ac7554cb3d36"
           ],
-          "mttd_seconds_avg": 0.155,
+          "mttd_seconds_avg": 0.137,
           "mttd_seconds_all": [
-            0.209,
-            0.101
+            0.193,
+            0.08
           ],
           "severities": [
             "high"
@@ -177,7 +177,7 @@
       ],
       "verdict": {
         "pass": true,
-        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.149s across 3 runs)",
+        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.14s across 3 runs)",
         "total_new_incidents": 6
       }
     },
@@ -188,16 +188,16 @@
         {
           "trial": 1,
           "scenario": "c",
-          "started_at": "2026-04-18T10:03:12.219976+00:00",
-          "scenario_seconds": 12.92,
+          "started_at": "2026-04-18T15:18:58.169635+00:00",
+          "scenario_seconds": 12.8,
           "exit_code": 0,
           "new_incidents": 1,
           "incident_ids": [
-            "12c65737-f6d3-474f-8037-fe4405afc92f"
+            "879ef9e7-3f2a-4c3a-be2a-2057115548d1"
           ],
-          "mttd_seconds_avg": 0.126,
+          "mttd_seconds_avg": 0.119,
           "mttd_seconds_all": [
-            0.126
+            0.119
           ],
           "severities": [
             "high"
@@ -212,16 +212,16 @@
         {
           "trial": 2,
           "scenario": "c",
-          "started_at": "2026-04-18T10:03:28.354477+00:00",
-          "scenario_seconds": 13.1,
+          "started_at": "2026-04-18T15:19:14.186803+00:00",
+          "scenario_seconds": 12.91,
           "exit_code": 0,
           "new_incidents": 1,
           "incident_ids": [
-            "7c647c44-fdaf-44e7-bcd5-ec605079758e"
+            "0be472d7-83a7-4930-830c-e0925bffa78f"
           ],
-          "mttd_seconds_avg": 0.125,
+          "mttd_seconds_avg": 0.128,
           "mttd_seconds_all": [
-            0.125
+            0.128
           ],
           "severities": [
             "high"
@@ -236,16 +236,16 @@
         {
           "trial": 3,
           "scenario": "c",
-          "started_at": "2026-04-18T10:03:44.558590+00:00",
-          "scenario_seconds": 13.05,
+          "started_at": "2026-04-18T15:19:30.360990+00:00",
+          "scenario_seconds": 12.95,
           "exit_code": 0,
           "new_incidents": 1,
           "incident_ids": [
-            "56519d1b-ad83-47e4-96d8-462fe9c385fb"
+            "87dfde80-042a-42ea-be94-4efefea7355f"
           ],
-          "mttd_seconds_avg": 0.12,
+          "mttd_seconds_avg": 0.084,
           "mttd_seconds_all": [
-            0.12
+            0.084
           ],
           "severities": [
             "high"
@@ -260,7 +260,7 @@
       ],
       "verdict": {
         "pass": true,
-        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.124s across 3 runs)",
+        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.11s across 3 runs)",
         "total_new_incidents": 3
       }
     }

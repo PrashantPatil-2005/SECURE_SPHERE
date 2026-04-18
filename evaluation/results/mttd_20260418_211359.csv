@@ -1,0 +1,2 @@
+incident_type,incident_count,avg_mttd_seconds,min_mttd_seconds,max_mttd_seconds,avg_attack_duration_seconds
+critical_exploit_attempt,1.0,0.084,0.084,0.084,0.0
