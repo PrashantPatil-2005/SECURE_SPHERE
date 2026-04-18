@@ -156,7 +156,7 @@ export default function DashboardLayout({
                   onClick={openPalette}
                   className="flex min-w-0 flex-1 items-center gap-2 rounded border border-dashed border-base-800 bg-base-950/60 px-2 py-2 text-left font-mono text-[11px] text-base-500 transition-colors duration-200"
                 >
-                  ⌘K · Commands
+                  ⌘K Commands
                 </button>
               </div>
             )}
