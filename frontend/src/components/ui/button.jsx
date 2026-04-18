@@ -2,15 +2,18 @@ import { cn } from '@/lib/utils';
 import { cva } from 'class-variance-authority';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:opacity-40 disabled:pointer-events-none cursor-pointer',
+  'inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-40 cursor-pointer',
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-white hover:bg-accent-hover shadow-sm shadow-accent/20 hover:shadow-accent/30',
-        secondary: 'bg-white/[0.04] text-base-200 border border-white/[0.07] hover:bg-white/[0.08] hover:border-white/10',
-        ghost: 'text-base-400 hover:text-base-200 hover:bg-white/[0.04]',
-        danger: 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20',
-        icon: 'text-base-400 hover:text-base-200 hover:bg-white/[0.06] rounded-lg',
+        primary:
+          'bg-accent text-base-950 hover:bg-accent-hover shadow-sm shadow-accent/20 hover:shadow-accent/30',
+        secondary:
+          'border border-base-800 bg-base-950/50 text-base-200 hover:border-base-700 hover:bg-base-900/80',
+        ghost: 'text-base-400 hover:bg-base-950/40 hover:text-base-200',
+        danger:
+          'border border-base-700 bg-base-900 text-base-200 hover:border-base-600 hover:bg-base-950',
+        icon: 'rounded-lg text-base-400 hover:bg-base-950/50 hover:text-base-200',
       },
       size: {
         sm: 'h-7 px-2.5 text-xs',

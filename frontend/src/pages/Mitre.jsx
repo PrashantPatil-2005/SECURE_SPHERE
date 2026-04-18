@@ -19,7 +19,7 @@ export default function Mitre() {
       </div>
 
       <Card>
-        <CardHeader className="flex-row items-center gap-2 border-b border-dashed border-white/[0.06]">
+        <CardHeader className="flex-row items-center gap-2 border-b border-dashed border-base-800">
           <Crosshair className="h-4 w-4 text-accent" />
           <CardTitle className="text-sm">Coverage matrix</CardTitle>
         </CardHeader>

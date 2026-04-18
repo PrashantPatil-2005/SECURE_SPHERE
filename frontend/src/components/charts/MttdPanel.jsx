@@ -105,14 +105,14 @@ export default function MttdPanel() {
             <Loader2 className="w-4 h-4 animate-spin text-accent" /> Loading MTTD report…
           </div>
         ) : error ? (
-          <div className="py-6 text-center text-xs text-red-400">{error}</div>
+          <div className="py-6 text-center text-xs text-base-400">{error}</div>
         ) : rows.length === 0 ? (
           <div className="py-8 text-center text-xs text-base-500">No MTTD data yet — run an attack scenario.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-[10px] uppercase tracking-wider text-base-500 border-b border-white/[0.06]">
+                <tr className="text-[10px] uppercase tracking-wider text-base-500 border-b border-base-800">
                   <th className="text-left font-semibold py-2 pl-1">Incident type</th>
                   <th className="text-right font-semibold py-2 px-2">Count</th>
                   <th className="text-right font-semibold py-2 px-2">Avg MTTD</th>
@@ -127,7 +127,7 @@ export default function MttdPanel() {
                   const pct = maxAvg > 0 ? Math.min(100, ((r.avg_mttd_seconds || 0) / maxAvg) * 100) : 0;
                   const tone = mttdTone(r.avg_mttd_seconds);
                   return (
-                    <tr key={r.incident_type || i} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                    <tr key={r.incident_type || i} className="border-b border-base-800 hover:bg-base-950/35">
                       <td className="py-2 pl-1 font-medium text-base-200">{prettyType(r.incident_type)}</td>
                       <td className="py-2 px-2 text-right font-mono text-base-300">{r.incident_count}</td>
                       <td className={cn('py-2 px-2 text-right font-mono font-semibold', tone)}>

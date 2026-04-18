@@ -1,19 +1,56 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#060910" />
+    <meta name="theme-color" content="#0a0a0a" />
     <meta name="description" content="SecuriSphere — Multi-Layer Cybersecurity Monitoring Dashboard" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <title>SecuriSphere | Security Dashboard</title>
-    <script type="module" crossorigin src="/assets/index-CwA99eew.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-C5fbmPy8.css">
+    <script>
+      (function () {
+        function apply(on) {
+          var r = document.documentElement;
+          if (on) r.classList.add('dark');
+          else r.classList.remove('dark');
+        }
+        try {
+          var t = localStorage.getItem('theme');
+          if (t === 'light') {
+            apply(false);
+            return;
+          }
+          if (t === 'dark') {
+            apply(true);
+            return;
+          }
+        } catch (e) {}
+        try {
+          var raw = localStorage.getItem('securisphere-app-store');
+          if (raw) {
+            var p = JSON.parse(raw);
+            var st = (p.state && p.state.theme) || p.theme;
+            if (st === 'light') apply(false);
+            else apply(true);
+            return;
+          }
+        } catch (e2) {}
+        try {
+          var leg = localStorage.getItem('securisphere_theme');
+          if (leg === 'light') apply(false);
+          else apply(true);
+        } catch (e3) {
+          apply(true);
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-BS5_cRFE.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C_CCZmSA.css">
   </head>
-  <body class="bg-base-950 dark:bg-base-950 text-base-100 antialiased">
+  <body class="bg-base-950 text-base-100 antialiased transition-colors duration-200 ease-in-out">
     <div id="root"></div>
   </body>
 </html>

@@ -16,6 +16,7 @@ import {
   getSeverityString, safeString,
 } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { useAppStore } from '@/stores/useAppStore';
 
 const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
@@ -84,7 +85,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
               </span>
             )}
             {duration != null && (
-              <span className="text-[10px] font-mono text-base-500 px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.05]">
+              <span className="text-[10px] font-mono text-base-500 px-2 py-0.5 rounded bg-base-950/40 border border-base-800">
                 duration: {Math.round(duration)}s
               </span>
             )}
@@ -95,7 +96,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
 
           {/* Narrative */}
           {inc.narrative && (
-            <p className="text-[11px] text-base-400 mt-1 mb-3 leading-relaxed border-l-2 border-white/[0.06] pl-2 italic">
+            <p className="text-[11px] text-base-400 mt-1 mb-3 leading-relaxed border-l-2 border-base-800 pl-2 italic">
               {inc.narrative}
             </p>
           )}
@@ -187,7 +188,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
 
       {/* ------ Expanded drill-down ------ */}
       {expanded && (
-        <div className="border-t border-white/[0.06] bg-base-900/40 p-4 flex flex-col gap-4">
+        <div className="border-t border-base-800 bg-base-900/40 p-4 flex flex-col gap-4">
           {/* Timestamps */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
             <DetailCell label="First event" icon={Clock}
@@ -226,7 +227,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
               <Loader2 className="w-4 h-4 animate-spin text-accent" /> Loading kill-chain…
             </div>
           ) : detailError ? (
-            <div className="text-xs text-red-400">{detailError}</div>
+            <div className="text-xs text-base-400">{detailError}</div>
           ) : richSteps?.length > 0 ? (
             <StepTable steps={richSteps} />
           ) : (
@@ -261,7 +262,7 @@ function StepTable({ steps }) {
     <div className="overflow-x-auto">
       <table className="w-full text-[11px]">
         <thead>
-          <tr className="text-[9px] uppercase tracking-wider text-base-500 border-b border-white/[0.06]">
+          <tr className="text-[9px] uppercase tracking-wider text-base-500 border-b border-base-800">
             <th className="text-left font-semibold py-1.5 pl-1 w-8">#</th>
             <th className="text-left font-semibold py-1.5 px-2">Service</th>
             <th className="text-left font-semibold py-1.5 px-2">Layer</th>
@@ -282,7 +283,7 @@ function StepTable({ steps }) {
             const sevHex = severity ? severityColor(severity) : null;
             const ts = s.timestamp || s.ts;
             return (
-              <tr key={i} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+              <tr key={i} className="border-b border-base-800 hover:bg-base-950/35">
                 <td className="py-1.5 pl-1 font-mono text-base-500">{i + 1}</td>
                 <td className="py-1.5 px-2 font-semibold text-base-100">{safeString(service)}</td>
                 <td className="py-1.5 px-2">
@@ -321,6 +322,7 @@ function StepTable({ steps }) {
 // Main page
 // ---------------------------------------------------------------------------
 export default function Incidents({ incidents, onReplayRequest }) {
+  const kcMode = useAppStore((s) => s.kc);
   const [statusFilter, setStatusFilter] = useState('all');
   const [sevFilter, setSevFilter] = useState('all');
   const [replayingId, setReplayingId] = useState(null);
@@ -380,7 +382,7 @@ export default function Incidents({ incidents, onReplayRequest }) {
   };
 
   return (
-    <motion.div {...anim} className="flex flex-col gap-4">
+    <motion.div {...anim} data-kc-view={kcMode} className="flex flex-col gap-4">
       {/* MTTD evaluation panel */}
       <MttdPanel />
 

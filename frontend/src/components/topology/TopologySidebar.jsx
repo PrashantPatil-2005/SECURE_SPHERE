@@ -14,7 +14,7 @@ function SectionTitle({ children, className }) {
   return (
     <h4
       className={cn(
-        'border-b border-dashed border-white/[0.08] pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-base-500',
+        'border-b border-dashed border-base-800 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-base-500',
         className
       )}
     >
@@ -47,13 +47,13 @@ export default function TopologySidebar({
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col gap-3 overflow-y-auto lg:max-w-[220px]">
-      <div className="rounded-lg border border-dashed border-white/[0.08] bg-base-950/40 p-3">
+      <div className="rounded-lg border border-dashed border-base-800 bg-base-950/40 p-3 transition-colors duration-200">
         <SectionTitle>Legend</SectionTitle>
         <ul className="mt-2.5 flex flex-col gap-2">
           {LEGEND.map((l) => (
             <li key={l.level} className="flex items-center gap-2">
               <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/10"
+                className="h-2.5 w-2.5 shrink-0 rounded-full border border-base-800"
                 style={{
                   borderColor: threatLevelColor(l.level),
                   background: `${threatLevelColor(l.level)}22`,
@@ -63,18 +63,18 @@ export default function TopologySidebar({
             </li>
           ))}
         </ul>
-        <div className="my-2.5 h-px bg-white/[0.06]" />
+        <div className="my-2.5 h-px bg-base-800" />
         <div className="flex items-center gap-2">
-          <div className="h-0 w-6 border-t-2 border-dashed border-red-500/90" />
+          <div className="h-0 w-6 border-t-2 border-dashed border-base-500" />
           <span className="text-[11px] text-base-400">Attack path</span>
         </div>
         <div className="mt-1.5 flex items-center gap-2">
-          <div className="h-0 w-6 border-t border-white/10" />
+          <div className="h-0 w-6 border-t border-base-800" />
           <span className="text-[11px] text-base-400">Dependency</span>
         </div>
       </div>
 
-      <div className="rounded-lg border border-dashed border-white/[0.08] bg-base-950/40 p-3">
+      <div className="rounded-lg border border-dashed border-base-800 bg-base-950/40 p-3 transition-colors duration-200">
         <SectionTitle>Selected node</SectionTitle>
         {!selectedNode ? (
           <p className="mt-2 text-[11px] leading-relaxed text-base-600">
@@ -110,7 +110,7 @@ export default function TopologySidebar({
                 {mitreTags.map((t) => (
                   <span
                     key={t}
-                    className="rounded border border-white/[0.08] bg-base-900/80 px-1.5 py-0.5 text-[9px] text-base-400"
+                    className="rounded border border-base-800 bg-base-900/80 px-1.5 py-0.5 text-[9px] text-base-400"
                   >
                     {t}
                   </span>
@@ -124,7 +124,7 @@ export default function TopologySidebar({
         )}
       </div>
 
-      <div className="rounded-lg border border-dashed border-white/[0.08] bg-base-950/40 p-3">
+      <div className="rounded-lg border border-dashed border-base-800 bg-base-950/40 p-3 transition-colors duration-200">
         <SectionTitle>Actions</SectionTitle>
         <div className="mt-2.5 flex flex-col gap-1.5">
           <Button

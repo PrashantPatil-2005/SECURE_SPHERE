@@ -5,7 +5,7 @@ function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const d = payload[0];
   return (
-    <div className="rounded-lg border border-white/10 bg-base-800/95 backdrop-blur-sm px-3 py-2 shadow-lg text-xs">
+    <div className="rounded-lg border border-base-800 bg-base-800/95 backdrop-blur-sm px-3 py-2 shadow-lg text-xs">
       <span className="text-base-200">{d.payload.name}</span>
       <span className="font-mono font-semibold text-base-100 ml-2">{d.value}</span>
     </div>

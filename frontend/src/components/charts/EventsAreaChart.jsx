@@ -13,7 +13,7 @@ const COLORS = {
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-white/10 bg-base-800/95 backdrop-blur-sm px-3 py-2 shadow-lg">
+    <div className="rounded-lg border border-base-800 bg-base-800/95 backdrop-blur-sm px-3 py-2 shadow-lg">
       <div className="text-[10px] text-base-500 font-mono mb-1">{label}</div>
       {payload.map(p => (
         <div key={p.dataKey} className="flex items-center gap-2 text-xs">

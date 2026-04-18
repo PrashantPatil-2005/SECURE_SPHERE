@@ -60,7 +60,7 @@ export default function KillChainTimeline({
           <div key={i} className="flex items-stretch gap-1 shrink-0">
             <div className={cn(
               'relative flex flex-col gap-1 px-3 py-2 rounded-lg border min-w-[140px] bg-base-900/60',
-              'border-white/[0.06]',
+              'border-base-800',
               isFirst && 'border-accent/30 bg-accent/[0.05]',
               isLast && !isFirst && 'border-severity-critical/30 bg-severity-critical/[0.05]',
             )}>

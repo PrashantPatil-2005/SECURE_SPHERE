@@ -40,40 +40,57 @@ export function relativeTime(iso) {
 
 export function severityColor(severity) {
   switch (getSeverityString(severity)) {
-    case 'critical': return '#c14953';
-    case 'high':     return '#b8753a';
-    case 'medium':   return '#b59441';
-    case 'low':      return '#5f8c6e';
-    default:         return '#5f667a';
+    case 'critical':
+      return '#ef4444';
+    case 'high':
+    case 'medium':
+    case 'low':
+    default:
+      return 'var(--base-500)';
   }
 }
 
 export function severityClass(severity) {
   switch (getSeverityString(severity)) {
-    case 'critical': return 'text-severity-critical bg-red-500/10 border-red-500/20';
-    case 'high': return 'text-severity-high bg-orange-500/10 border-orange-500/20';
-    case 'medium': return 'text-severity-medium bg-yellow-500/10 border-yellow-500/20';
-    case 'low': return 'text-severity-low bg-green-500/10 border-green-500/20';
-    default: return 'text-severity-info bg-cyan-500/10 border-cyan-500/20';
+    case 'critical':
+      return 'text-severity-critical bg-red-500/10 border-red-500/25';
+    case 'high':
+      return 'text-base-200 bg-base-800/40 border-base-700';
+    case 'medium':
+      return 'text-base-300 bg-base-800/30 border-base-700';
+    case 'low':
+      return 'text-base-400 bg-base-800/20 border-base-800';
+    default:
+      return 'text-base-500 bg-base-900/50 border-base-800';
   }
 }
 
 export function threatLevelColor(level) {
   switch (level?.toLowerCase()) {
-    case 'critical':    return '#8a5e9a';
-    case 'threatening': return '#c14953';
-    case 'suspicious':  return '#b59441';
-    case 'normal':      return '#5f8c6e';
-    default:            return '#5f8c6e';
+    case 'critical':
+      return '#ef4444';
+    case 'threatening':
+      return 'var(--base-400)';
+    case 'suspicious':
+      return 'var(--base-500)';
+    case 'normal':
+      return 'var(--base-600)';
+    default:
+      return 'var(--base-600)';
   }
 }
 
 export function layerColor(layer) {
   switch (layer?.toLowerCase()) {
-    case 'network': return '#6b86b3';
-    case 'api':     return '#8a7dad';
-    case 'auth':    return '#5f8c6e';
-    case 'browser': return '#b8753a';
-    default:        return '#5f667a';
+    case 'network':
+      return 'var(--base-400)';
+    case 'api':
+      return 'var(--base-500)';
+    case 'auth':
+      return 'var(--base-300)';
+    case 'browser':
+      return 'var(--base-500)';
+    default:
+      return 'var(--base-500)';
   }
 }

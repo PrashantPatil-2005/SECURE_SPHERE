@@ -236,7 +236,7 @@ export default function TopologyGraph({
       <svg ref={svgRef} width="100%" height={height} className="bg-transparent" />
       {tooltip && (
         <div
-          className="pointer-events-none absolute z-50 rounded-md border border-white/10 bg-base-900/95 px-3 py-2 backdrop-blur-sm"
+          className="pointer-events-none absolute z-50 rounded-md border border-base-800 bg-base-900/95 px-3 py-2 backdrop-blur-sm"
           style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}
         >
           <div className="mb-1 text-xs font-semibold text-base-100">{tooltip.data.name}</div>

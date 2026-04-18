@@ -36,7 +36,7 @@ export default function Login({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-base-950 relative overflow-hidden px-5">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-base-950 px-5 transition-colors duration-200">
       {/* Subtle grid — no neon orbs */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px] pointer-events-none [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_75%)]" />
 
@@ -44,7 +44,7 @@ export default function Login({ onLogin }) {
         initial={{ opacity: 0, y: 20, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="relative z-10 w-full max-w-[400px] bg-base-900/80 backdrop-blur-2xl border border-white/[0.07] rounded-2xl p-9"
+        className="relative z-10 w-full max-w-[400px] bg-base-900/80 backdrop-blur-2xl border border-base-800 rounded-2xl p-9"
       >
         {/* Accent line */}
         <div className="absolute top-0 left-10 right-10 h-0.5 bg-gradient-to-r from-transparent via-accent to-transparent rounded-full" />
@@ -60,7 +60,7 @@ export default function Login({ onLogin }) {
 
         {/* Error */}
         {error && (
-          <div className="flex items-center gap-2 p-2.5 mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-base-800 bg-base-950/50 p-2.5 text-xs text-base-300">
             <span className="shrink-0">&#10005;</span>
             <span>{error}</span>
           </div>
@@ -75,7 +75,7 @@ export default function Login({ onLogin }) {
               placeholder="Enter username"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-base-800 border border-white/[0.07] text-sm text-base-100 placeholder:text-base-600 outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all"
+              className="w-full h-10 px-3 rounded-lg bg-base-800 border border-base-800 text-sm text-base-100 placeholder:text-base-600 outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all"
             />
           </div>
 
@@ -88,7 +88,7 @@ export default function Login({ onLogin }) {
                 placeholder="Enter password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full h-10 px-3 pr-10 rounded-lg bg-base-800 border border-white/[0.07] text-sm text-base-100 placeholder:text-base-600 outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all"
+                className="w-full h-10 px-3 pr-10 rounded-lg bg-base-800 border border-base-800 text-sm text-base-100 placeholder:text-base-600 outline-none focus:border-accent focus:ring-2 focus:ring-accent/10 transition-all"
               />
               <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-base-500 hover:text-base-300 transition-colors" tabIndex={-1}>
                 {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -99,8 +99,8 @@ export default function Login({ onLogin }) {
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="sr-only" />
-              <div className={`w-4 h-4 rounded border ${remember ? 'bg-accent border-accent' : 'border-white/10 bg-white/[0.03]'} flex items-center justify-center transition-all`}>
-                {remember && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+              <div className={`w-4 h-4 rounded border ${remember ? 'bg-accent border-accent' : 'border-base-800 bg-base-950/40'} flex items-center justify-center transition-all`}>
+                {remember && <svg className="h-2.5 w-2.5 text-base-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
               </div>
               <span className="text-xs text-base-400">Remember me</span>
             </label>
@@ -110,16 +110,16 @@ export default function Login({ onLogin }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-10 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-md shadow-accent/20 hover:shadow-accent/30 hover:-translate-y-0.5 disabled:opacity-50"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-base-950 shadow-md shadow-accent/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-hover hover:shadow-accent/30 disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Sign In <ArrowRight className="w-4 h-4" /></>}
           </button>
         </form>
 
         <div className="mt-6 flex items-center gap-3">
-          <div className="flex-1 h-px bg-white/[0.05]" />
-          <span className="text-[10px] text-base-600 uppercase tracking-widest">Secured by SecuriSphere</span>
-          <div className="flex-1 h-px bg-white/[0.05]" />
+          <div className="h-px flex-1 bg-base-800" />
+          <span className="text-[10px] uppercase tracking-widest text-base-600">Secured by SecuriSphere</span>
+          <div className="h-px flex-1 bg-base-800" />
         </div>
       </motion.div>
     </div>

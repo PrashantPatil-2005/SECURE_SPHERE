@@ -24,12 +24,12 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
   }, [lastUpdate]);
 
   const staleness =
-    secondsAgo < 10 ? 'text-green-400' : secondsAgo < 30 ? 'text-yellow-400/90' : 'text-red-400/90';
+    secondsAgo < 10 ? 'text-base-400' : secondsAgo < 30 ? 'text-base-300' : 'text-base-200';
 
   return (
     <header
       className={cn(
-        'flex h-12 shrink-0 items-center gap-3 border-b border-dashed border-white/[0.08] bg-base-900/90 px-4 backdrop-blur-xl'
+        'flex h-12 shrink-0 items-center gap-3 border-b border-dashed border-base-800 bg-base-900/90 px-4 backdrop-blur-xl transition-colors duration-200'
       )}
     >
       <div className="flex min-w-0 items-baseline gap-2">
@@ -41,7 +41,7 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
         <button
           type="button"
           onClick={onOpenPalette}
-          className="hidden min-w-0 flex-1 items-center gap-2 rounded border border-dashed border-white/[0.1] bg-base-950/60 px-3 py-1.5 text-left font-mono text-[11px] text-base-500 transition-colors hover:border-accent/25 hover:text-base-400 sm:flex"
+          className="hidden min-w-0 flex-1 items-center gap-2 rounded border border-dashed border-base-800 bg-base-950/60 px-3 py-1.5 text-left font-mono text-[11px] text-base-500 transition-colors duration-200 hover:border-accent/25 hover:text-base-400 sm:flex"
         >
           <span className="text-base-600">⌘K</span>
           <span className="truncate">Command palette — navigate, filter, act</span>
@@ -53,7 +53,7 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
       <button
         type="button"
         onClick={onOpenPalette}
-        className="shrink-0 rounded border border-white/[0.08] bg-base-950/50 px-2 py-1 font-mono text-[10px] text-base-500 transition-colors hover:border-accent/30 hover:text-base-400"
+        className="shrink-0 rounded border border-base-800 bg-base-950/50 px-2 py-1 font-mono text-[10px] text-base-500 transition-colors duration-200 hover:border-accent/30 hover:text-base-400"
         title="Command palette"
       >
         ⌘K
@@ -63,7 +63,9 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
         <span
           className={cn(
             'h-1.5 w-1.5 rounded-full',
-            connected ? 'bg-green-500 shadow-[0_0_6px_rgba(95,140,110,0.45)]' : 'bg-red-500'
+            connected
+              ? 'bg-base-400 shadow-[0_0_6px_rgba(0,0,0,0.12)] dark:shadow-[0_0_8px_rgba(255,255,255,0.1)]'
+              : 'bg-base-600'
           )}
         />
         {connected ? 'live' : 'offline'}
@@ -119,7 +121,7 @@ export default function DashboardLayout({
   const isMinimal = shell === NAV_SHELL.MINIMAL;
 
   return (
-    <div className="flex min-h-screen flex-col bg-base-950 dark:bg-base-950">
+    <div className="flex min-h-screen flex-col bg-base-950 transition-colors duration-200">
       {!isTop && (
         <ChromeBar
           activeTab={activeTab}
@@ -133,18 +135,13 @@ export default function DashboardLayout({
       <CommandPaletteBridgeContext.Provider value={paletteBridge}>
         <div className="flex min-h-0 flex-1 flex-row">
           {isSidebar && (
-            <SidebarNav
-              activeTab={activeTab}
-              onTabChange={onTabChange}
-              badges={badges}
-            />
+            <SidebarNav badges={badges} />
           )}
 
           <div className="flex min-w-0 flex-1 flex-col">
             {isTop && (
               <TopNav
                 activeTab={activeTab}
-                onTabChange={onTabChange}
                 badges={badges}
                 connected={connected}
                 onProfileClick={onProfileClick}
@@ -153,11 +150,11 @@ export default function DashboardLayout({
             )}
 
             {isMinimal && (
-              <div className="flex items-center gap-2 border-b border-dashed border-white/[0.06] bg-base-900/40 px-3 py-2 sm:hidden">
+              <div className="flex items-center gap-2 border-b border-dashed border-base-800 bg-base-900/40 px-3 py-2 transition-colors duration-200 sm:hidden">
                 <button
                   type="button"
                   onClick={openPalette}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded border border-dashed border-white/[0.1] bg-base-950/60 px-2 py-2 text-left font-mono text-[11px] text-base-500"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded border border-dashed border-base-800 bg-base-950/60 px-2 py-2 text-left font-mono text-[11px] text-base-500 transition-colors duration-200"
                 >
                   ⌘K · Commands
                 </button>
@@ -166,7 +163,7 @@ export default function DashboardLayout({
 
             {toolbar}
 
-            <main className="flex-1 overflow-y-auto p-6">{children}</main>
+            <main className="flex-1 overflow-y-auto p-6 transition-colors duration-200">{children}</main>
 
             {statusBar}
           </div>
@@ -186,7 +183,7 @@ export default function DashboardLayout({
         />
 
         {tip && (
-          <div className="fixed bottom-14 left-1/2 z-[190] max-w-md -translate-x-1/2 rounded-md border border-white/[0.1] bg-base-900 px-4 py-2 font-mono text-[11px] text-base-300 shadow-lg">
+          <div className="fixed bottom-14 left-1/2 z-[190] max-w-md -translate-x-1/2 rounded-md border border-base-800 bg-base-900 px-4 py-2 font-mono text-[11px] text-base-300 shadow-lg transition-colors duration-200">
             {tip}
           </div>
         )}

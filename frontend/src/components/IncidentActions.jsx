@@ -17,14 +17,14 @@ const ACTIONS = [
     label: 'Escalate',
     icon: AlertOctagon,
     help: 'Escalate to oncall / senior analyst.',
-    tone: 'text-red-300 hover:text-red-200 border-red-500/30 hover:bg-red-500/10',
+    tone: 'border-base-700 text-base-200 hover:border-base-600 hover:bg-base-800/40 hover:text-base-100',
   },
   {
     key: 'suppressed',
     label: 'Suppress',
     icon: VolumeX,
     help: 'False positive — suppress IP for 30 min.',
-    tone: 'text-base-300 hover:text-base-100 border-white/10 hover:bg-white/[0.06]',
+    tone: 'text-base-300 hover:text-base-100 border-base-800 hover:bg-base-900/50',
   },
 ];
 
@@ -72,7 +72,7 @@ export default function IncidentActions({ incidentId, currentStatus, onChange })
                 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-medium border transition-colors',
                 a.tone,
                 chosen && 'ring-2 ring-accent/40',
-                active && 'bg-white/[0.04]',
+                active && 'bg-base-950/45',
               )}
             >
               <Icon className="w-3 h-3" />
@@ -84,13 +84,13 @@ export default function IncidentActions({ incidentId, currentStatus, onChange })
       </div>
 
       {selected && (
-        <div className="flex flex-col gap-2 p-2.5 rounded-lg bg-base-900/60 border border-white/[0.06]">
+        <div className="flex flex-col gap-2 p-2.5 rounded-lg bg-base-900/60 border border-base-800">
           <textarea
             value={note}
             onChange={e => setNote(e.target.value)}
             placeholder={`Optional note for ${selected}…`}
             rows={2}
-            className="w-full text-[11px] text-base-200 bg-base-950 border border-white/[0.06] rounded-md px-2 py-1.5 outline-none focus:border-accent/50 resize-none"
+            className="w-full text-[11px] text-base-200 bg-base-950 border border-base-800 rounded-md px-2 py-1.5 outline-none focus:border-accent/50 resize-none"
           />
           <div className="flex items-center gap-2">
             <Button
@@ -110,7 +110,7 @@ export default function IncidentActions({ incidentId, currentStatus, onChange })
             >
               <X className="w-3 h-3" /> Cancel
             </Button>
-            {error && <span className="text-[11px] text-red-400">{error}</span>}
+            {error && <span className="text-[11px] text-base-400">{error}</span>}
           </div>
         </div>
       )}

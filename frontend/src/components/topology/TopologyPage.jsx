@@ -80,7 +80,7 @@ export default function TopologyPage({ topology, riskScores, incidents }) {
         )}
       >
         {/* Left rail — view mode (not global SidebarNav) */}
-        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-white/[0.08] bg-base-950/40 p-2.5 lg:min-h-[520px]">
+        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-base-800 bg-base-950/40 p-2.5 lg:min-h-[520px]">
           <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-base-600">
             View
           </span>
@@ -92,7 +92,7 @@ export default function TopologyPage({ topology, riskScores, incidents }) {
                 'rounded-md border border-dashed px-2 py-2 text-left font-mono text-[11px] transition-colors',
                 viewMode === 'graph'
                   ? 'border-accent/35 bg-accent/[0.1] text-accent'
-                  : 'border-white/[0.06] text-base-400 hover:border-white/[0.1]'
+                  : 'border-base-800 text-base-400 hover:border-base-800'
               )}
             >
               Graph
@@ -104,7 +104,7 @@ export default function TopologyPage({ topology, riskScores, incidents }) {
                 'rounded-md border border-dashed px-2 py-2 text-left font-mono text-[11px] transition-colors',
                 viewMode === 'layered'
                   ? 'border-accent/35 bg-accent/[0.1] text-accent'
-                  : 'border-white/[0.06] text-base-400 hover:border-white/[0.1]'
+                  : 'border-base-800 text-base-400 hover:border-base-800'
               )}
             >
               Layers
@@ -116,7 +116,7 @@ export default function TopologyPage({ topology, riskScores, incidents }) {
         </div>
 
         {/* Center — graph or layered */}
-        <div className="min-w-0 overflow-hidden rounded-lg border border-dashed border-white/[0.08] bg-base-950/30">
+        <div className="min-w-0 overflow-hidden rounded-lg border border-dashed border-base-800 bg-base-950/30">
           {!hasData ? (
             <div className="flex h-[520px] flex-col items-center justify-center gap-2 text-sm text-base-500">
               <Network className="h-10 w-10 opacity-20" />

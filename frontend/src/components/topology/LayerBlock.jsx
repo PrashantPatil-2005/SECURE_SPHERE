@@ -7,12 +7,12 @@ export default function LayerBlock({ title, subtitle, highlight, children, class
   return (
     <section
       className={cn(
-        'rounded-lg border border-dashed border-white/[0.08] bg-base-950/30 p-3',
+        'rounded-lg border border-dashed border-base-800 bg-base-950/30 p-3',
         highlight && 'border-accent/25 bg-accent/[0.04]',
         className
       )}
     >
-      <header className="mb-2.5 border-b border-dashed border-white/[0.06] pb-2">
+      <header className="mb-2.5 border-b border-dashed border-base-800 pb-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-base-300">{title}</h3>
         {subtitle && <p className="mt-0.5 text-[10px] text-base-600">{subtitle}</p>}
       </header>

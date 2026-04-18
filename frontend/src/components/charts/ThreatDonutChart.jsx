@@ -5,7 +5,7 @@ function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const d = payload[0];
   return (
-    <div className="rounded-lg border border-white/10 bg-base-800/95 backdrop-blur-sm px-3 py-2 shadow-lg">
+    <div className="rounded-lg border border-base-800 bg-base-800/95 backdrop-blur-sm px-3 py-2 shadow-lg">
       <div className="flex items-center gap-2 text-xs">
         <div className="w-2 h-2 rounded-full" style={{ background: d.payload.fill }} />
         <span className="text-base-200 capitalize">{d.name}</span>
