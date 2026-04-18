@@ -93,3 +93,113 @@ body {
   outline: 1px dashed color-mix(in srgb, var(--base-500) 50%, transparent);
   outline-offset: 2px;
 }
+
+/* ── Aesthetic surface shadows ───────────────────────────────────────────
+   Adds depth to every card / panel / surface. Shadow tokens switch with
+   theme. Edges get a faint highlight rim so borders read as lit. */
+
+:root {
+  --surface-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.08),
+    0 4px 10px rgba(15, 15, 15, 0.05),
+    0 12px 28px rgba(15, 15, 15, 0.04);
+  --surface-shadow-hover:
+    0 1px 2px rgba(15, 15, 15, 0.10),
+    0 6px 16px rgba(15, 15, 15, 0.08),
+    0 22px 42px rgba(15, 15, 15, 0.06);
+  --surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  --surface-inset: inset 0 0 0 1px rgba(15, 15, 15, 0.02);
+}
+
+.dark {
+  --surface-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 6px 16px rgba(0, 0, 0, 0.45),
+    0 18px 40px rgba(0, 0, 0, 0.35);
+  --surface-shadow-hover:
+    0 1px 2px rgba(0, 0, 0, 0.65),
+    0 10px 24px rgba(0, 0, 0, 0.6),
+    0 30px 58px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  --surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --surface-inset: inset 0 0 0 1px rgba(255, 255, 255, 0.015);
+}
+
+/* Card + panel surfaces — match every rounded container that uses a base
+   surface + border (the Card/ChartCard/Sidebar/Header pattern). */
+:where(
+  .rounded-\[10px\],
+  .rounded-lg,
+  .rounded-md,
+  aside,
+  header
+):where(
+  [class*="bg-base-900"],
+  [class*="bg-base-950"],
+  [class*="bg-base-800"]
+) {
+  box-shadow: var(--surface-shadow), var(--surface-rim);
+  transition: box-shadow 220ms ease, transform 220ms ease, border-color 200ms ease;
+}
+
+/* Card-like containers lift on hover. Targets the Card primitive + any
+   panel built from the same rounded-border-surface trio. */
+.rounded-\[10px\]:where([class*="border-base-800"], [class*="border-base-900"]):hover,
+.rounded-lg:where([class*="border-base-800"], [class*="border-base-900"]):hover {
+  box-shadow: var(--surface-shadow-hover), var(--surface-rim);
+  border-color: color-mix(in srgb, var(--base-700) 55%, transparent);
+}
+
+/* Buttons + pill controls — softer drop shadow. */
+:where(button, a[role="button"]):where(
+  [class*="border-base-800"],
+  [class*="bg-base-900"],
+  [class*="bg-base-950"]
+) {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), var(--surface-rim);
+  transition: box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease;
+}
+.dark :where(button, a[role="button"]):where(
+  [class*="border-base-800"],
+  [class*="bg-base-900"],
+  [class*="bg-base-950"]
+) {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+:where(button, a[role="button"]):where(
+  [class*="border-base-800"],
+  [class*="bg-base-900"],
+  [class*="bg-base-950"]
+):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28), var(--surface-rim);
+}
+
+/* Active nav link — inset accent halo (reads like backlit). */
+.dark nav a[aria-current="page"],
+nav a[aria-current="page"] {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 0 18px -4px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Sidebar aside — soft right-edge bleed, gentle in both themes. */
+aside:where([class*="border-r"]) {
+  box-shadow: 3px 0 14px -10px rgba(0, 0, 0, 0.18), var(--surface-rim);
+}
+.dark aside:where([class*="border-r"]) {
+  box-shadow: 4px 0 18px -14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+/* Top chrome bar — floating over content. */
+header:where([class*="border-b"]) {
+  box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.35), var(--surface-rim);
+}
+.dark header:where([class*="border-b"]) {
+  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Topology graph edges — subtle drop to lift path lines off the canvas. */
+.topology-links line {
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.45));
+}
