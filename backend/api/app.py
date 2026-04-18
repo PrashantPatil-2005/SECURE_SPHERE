@@ -429,9 +429,27 @@ def latest_events():
 def clear_events():
     if redis_available:
         redis_client.delete("events:network", "events:api", "events:auth", "incidents", "risk_scores_current", "latest_summary")
+    
+    # Also clear PostgreSQL incidents (kill_chains)
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv("POSTGRES_HOST", "database"),
+            port=int(os.getenv("POSTGRES_PORT", 5432)),
+            dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
+            user=os.getenv("POSTGRES_USER", "securisphere_user"),
+            password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
+        )
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE kill_chains RESTART IDENTITY")
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error clearing PostgreSQL kill_chains: {e}")
+
     return jsonify({
         "status": "success", 
-        "message": "All events and incidents cleared",
+        "message": "All events and incidents cleared (Redis + Postgres)",
         "timestamp": datetime.utcnow().isoformat()
     })
 

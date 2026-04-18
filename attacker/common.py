@@ -89,12 +89,15 @@ def req(
 
 
 def reset_state() -> None:
-    """Best-effort reset of backend event log + auth state."""
-    for call in (
-        (f"{BACKEND_URL}/api/events/clear", "POST"),
-        (f"{AUTH_URL}/auth/reset-all",       "POST"),
+    """Best-effort reset of backend event log + auth state + engine cooldowns."""
+    ENGINE_URL  = os.getenv("SECURISPHERE_ENGINE_URL",  "http://localhost:5070")
+    AUTHMON_URL = os.getenv("SECURISPHERE_AUTHMON_URL", "http://localhost:5060")
+    for url, method in (
+        (f"{BACKEND_URL}/api/events/clear",  "POST"),
+        (f"{AUTH_URL}/auth/reset-all",        "POST"),
+        (f"{ENGINE_URL}/engine/reset",        "POST"),   # clears 5-min per-IP cooldown
+        (f"{AUTHMON_URL}/monitor/reset",      "POST"),   # flush ip_failures + cooldowns
     ):
-        url, method = call
         try:
             requests.request(method, url, timeout=3)
         except Exception:

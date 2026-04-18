@@ -1321,20 +1321,40 @@ class CorrelationEngine:
 
         @app.route("/engine/reset", methods=["POST"])
         def reset():
+            """
+            Hard reset for between-scenario runs in reproducibility experiments.
+            Clears:
+              - event_buffer (correlation window)
+              - risk_scores (per-IP state)
+              - recent_incidents (in-memory list)
+              - incident_cooldowns (per-rule, per-key 5-min gate)
+              - Redis risk_scores_current hash
+            Preserves: cumulative stats start_time (uptime).
+            """
+            buf_size   = len(self.event_buffer)
+            cd_count   = len(self.incident_cooldowns)
+            risk_count = len(self.risk_scores)
+
             with self.buffer_lock:
                 self.event_buffer = []
             self.risk_scores.clear()
-            self.redis.delete("risk_scores_current")
-            self.recent_incidents = []
+            try:
+                self.redis.delete("risk_scores_current")
+            except Exception as exc:
+                logger.warning("Reset: redis delete failed: %s", exc)
+            self.recent_incidents  = []
             self.incident_cooldowns = {}
-            self.stats = {
-                "events_processed": 0,
-                "incidents_created": 0,
-                "rules_triggered":  defaultdict(int),
-                "mitre_hits":       defaultdict(int),
-                "start_time":       datetime.now(),
-            }
-            return jsonify({"status": "reset_complete"})
+
+            logger.info(
+                "[RESET] Engine state cleared — buf=%d events, %d cooldowns, %d risk entries",
+                buf_size, cd_count, risk_count,
+            )
+            return jsonify({
+                "status":           "reset_complete",
+                "cleared_events":   buf_size,
+                "cleared_cooldowns": cd_count,
+                "cleared_risks":    risk_count,
+            })
 
     def _run_flask(self) -> None:
         self.app.run(host="0.0.0.0", port=5070, use_reloader=False)

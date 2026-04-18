@@ -39,22 +39,27 @@ LOW_NOISE = [
     "/api/files?name=readme.txt",
 ]
 
-# Benign logins (correct + incorrect, spread across real users)
+# Benign logins — valid credentials only (must match auth-service seed data
+# in backend/targets/auth-service/app.py). Repeated failures from a single
+# source would eventually trip the auth-monitor brute-force rule (5 failures
+# in 120 s), contaminating benign-baseline runs with false positives.
 BENIGN_LOGINS = [
-    ("john",   "password123"),   # valid
-    ("alice",  "wrongpw"),
-    ("bob",    "1234"),
-    ("carol",  "passw0rd"),
+    ("john",  "password123"),
+    ("jane",  "jane2024"),
+    ("bob",   "bobsecure"),
+    ("alice", "alice789"),
 ]
 
 
 def _one_cycle() -> None:
-    # 70% benign browsing, 20% suspicious-looking but benign, 10% auth
+    # 80% benign browsing, 17% low-noise GETs, 3% valid logins.
+    # Auth share kept below the brute-force threshold budget even across
+    # long sessions so the benign baseline produces 0 incidents.
     r = random.random()
-    if r < 0.7:
+    if r < 0.8:
         ep = random.choice(BENIGN_ENDPOINTS)
         req("GET", f"{API_URL}{ep}", timeout=2)
-    elif r < 0.9:
+    elif r < 0.97:
         ep = random.choice(LOW_NOISE)
         req("GET", f"{API_URL}{ep}", timeout=2)
     else:

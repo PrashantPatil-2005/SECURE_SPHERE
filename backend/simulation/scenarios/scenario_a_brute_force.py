@@ -55,6 +55,21 @@ def reset_auth() -> None:
         log(f"Reset failed: {exc}", Fore.RED)
 
 
+def reset_engine() -> None:
+    """Clear correlation engine cooldowns and event buffer between runs."""
+    ENGINE_URL = "http://correlation-engine:5070"
+    try:
+        r = requests.post(f"{ENGINE_URL}/engine/reset", timeout=5)
+        data = r.json()
+        log(
+            f"Engine reset — cleared {data.get('cleared_events', '?')} events, "
+            f"{data.get('cleared_cooldowns', '?')} cooldowns",
+            Fore.GREEN,
+        )
+    except Exception as exc:
+        log(f"Engine reset failed (non-fatal): {exc}", Fore.YELLOW)
+
+
 def run(delay_multiplier: float = 1.0) -> dict:
     """
     Execute Scenario A and return a result dict with detection summary.
@@ -77,6 +92,7 @@ def run(delay_multiplier: float = 1.0) -> dict:
     print(Fore.CYAN + "╚══════════════════════════════════════════════════╝" + Style.RESET_ALL)
 
     reset_auth()
+    reset_engine()
     time.sleep(2)
 
     # ── Stage 1: Dictionary brute force ────────────────────────────────────
@@ -170,7 +186,7 @@ def run(delay_multiplier: float = 1.0) -> dict:
     })
 
     # ── Verification ───────────────────────────────────────────────────────
-    time.sleep(5)
+    time.sleep(12)   # extended: allow correlation engine to process all events
     try:
         resp = requests.get(f"{BACKEND_URL}/api/incidents", timeout=5)
         incidents = resp.json().get("data", {}).get("incidents", [])

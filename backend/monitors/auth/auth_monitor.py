@@ -350,6 +350,19 @@ def health():
     })
 
 
+@flask_app.route("/monitor/reset", methods=["POST"])
+def reset():
+    """
+    Flush in-memory per-IP brute-force tracker + alert cooldowns. Used by
+    the Phase 16 trial runner so each scenario trial starts with a clean
+    detector state; otherwise the 60 s brute_force alert cooldown + 120 s
+    failure window carry state across trials and produce flaky results.
+    """
+    _monitor.ip_failures.clear()
+    _monitor.alert_cooldowns.clear()
+    return jsonify({"status": "reset", "service": "auth-monitor"})
+
+
 def _run_flask() -> None:
     flask_app.run(host="0.0.0.0", port=5060, debug=False, use_reloader=False)
 

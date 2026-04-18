@@ -63,6 +63,21 @@ def log(msg: str, color=Fore.WHITE) -> None:
     print(f"{color}[{datetime.now().strftime('%H:%M:%S')}] [Scenario-C] {msg}{Style.RESET_ALL}")
 
 
+def _reset_engine() -> None:
+    """Clear correlation engine cooldowns and event buffer between runs."""
+    ENGINE_URL = "http://correlation-engine:5070"
+    try:
+        r = requests.post(f"{ENGINE_URL}/engine/reset", timeout=5)
+        data = r.json()
+        log(
+            f"Engine reset — cleared {data.get('cleared_events', '?')} events, "
+            f"{data.get('cleared_cooldowns', '?')} cooldowns",
+            Fore.GREEN,
+        )
+    except Exception as exc:
+        log(f"Engine reset failed (non-fatal): {exc}", Fore.YELLOW)
+
+
 def _req(method: str, url: str, spoofed_ip: str = None, **kwargs) -> requests.Response | None:
     """Make an HTTP request, optionally spoofing X-Forwarded-For header."""
     headers = kwargs.pop("headers", {})
@@ -96,6 +111,7 @@ def run(delay_multiplier: float = 1.0) -> dict:
         requests.post(f"{AUTH_URL}/auth/reset-all", timeout=3)
     except Exception:
         pass
+    _reset_engine()
     time.sleep(2)
 
     # ── Stage 1: Initial Foothold — Web-App SQL Injection ──────────────────
@@ -195,7 +211,7 @@ def run(delay_multiplier: float = 1.0) -> dict:
 
     # ── Verification ───────────────────────────────────────────────────────
     log("Waiting for correlation engine…", Fore.CYAN)
-    time.sleep(8)
+    time.sleep(15)   # extended: 4-hop chain needs longer correlation window
 
     try:
         resp      = requests.get(f"{BACKEND_URL}/api/incidents", timeout=5)

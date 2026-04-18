@@ -222,17 +222,18 @@ attack-all:
 	docker-compose run --rm attack-simulator all
 
 # New named scenarios A / B / C (docker attack-simulator variants)
+# NOTE: attack-simulator is under the 'attack' profile — must pass --profile attack
 attack-a: ## Scenario A: Brute Force → Credential Compromise → Data Exfiltration
-	docker-compose run --rm attack-simulator python run_all.py --scenario a
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario a
 
 attack-b: ## Scenario B: Recon → SQL Injection → Privilege Escalation
-	docker-compose run --rm attack-simulator python run_all.py --scenario b
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario b
 
 attack-c: ## Scenario C: Multi-Hop Lateral Movement across 3+ services
-	docker-compose run --rm attack-simulator python run_all.py --scenario c
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario c
 
 attack-abc: ## Run all three named scenarios in sequence
-	docker-compose run --rm attack-simulator python run_all.py --scenario all
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario all
 
 # Host-run attacker scenarios (attacker/ package, talk to localhost endpoints).
 # Layer background noise with NOISE=1: `make attacker-a NOISE=1 SPEED=fast`
@@ -258,13 +259,30 @@ test-scenarios: ## Run scenario regression tests (mocked — no backend needed)
 	python -m pytest tests/test_scenarios.py -v
 
 attack-demo: ## Run full kill chain at demo speed for live presentations
-	docker-compose run --rm attack-simulator python run_all.py --scenario all --speed demo
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario all --speed demo
 
 attack-fast: ## Run all attack scenarios at maximum speed (for CI and quick testing)
-	docker-compose run --rm attack-simulator python run_all.py --scenario all --speed fast
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario all --speed fast
 
 attack-slow: ## Run all scenarios slowly for classroom or walkthrough presentations
-	docker-compose run --rm attack-simulator python run_all.py --scenario all --speed slow
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario all --speed slow
+
+# Phase 16: Host-based reproducibility trial runner (3× each scenario)
+# Requires: services running locally (run.bat start / docker compose up -d)
+trial-a: ## Run Scenario A 3 times, record incidents + MTTD per run
+	python scripts/run_attack_trials.py --scenario a
+
+trial-b: ## Run Scenario B 3 times, record incidents + MTTD per run
+	python scripts/run_attack_trials.py --scenario b
+
+trial-c: ## Run Scenario C 3 times, record incidents + MTTD per run
+	python scripts/run_attack_trials.py --scenario c
+
+trial-all: ## Run all three scenarios A/B/C 3× each
+	python scripts/run_attack_trials.py --scenario all
+
+trial-benign: ## Run benign traffic 3× to verify 0 false positives
+	python scripts/run_attack_trials.py --scenario benign
 
 # Topology Collector
 build-topology:
@@ -363,7 +381,7 @@ evaluate-full: ## Run complete evaluation: named scenarios + MTTD export + markd
 ci: ## Smoke test + fast attack + verify incidents were detected (CI pipeline)
 	@echo "Running SecuriSphere CI validation..."
 	python -m pytest tests/test_smoke.py tests/test_narrator.py -v
-	docker-compose run --rm attack-simulator python run_all.py --scenario a --speed fast
+	docker compose --profile attack run --rm attack-simulator python run_all.py --scenario a --speed fast
 	@sleep 15
 	@curl -sf http://localhost:8000/api/incidents | python3 -c \
 		"import sys,json; d=json.load(sys.stdin); \

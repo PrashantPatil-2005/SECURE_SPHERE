@@ -165,6 +165,18 @@ def main() -> None:
                 _log("Events cleared", Fore.GREEN)
             except Exception:
                 pass
+            # Reset engine cooldowns so each scenario gets a fresh detection window
+            engine_url = os.getenv("ENGINE_URL", "http://correlation-engine:5070")
+            try:
+                r = requests.post(f"{engine_url}/engine/reset", timeout=5)
+                d = r.json()
+                _log(
+                    f"Engine reset — {d.get('cleared_cooldowns', '?')} cooldowns, "
+                    f"{d.get('cleared_events', '?')} buffered events cleared",
+                    Fore.GREEN,
+                )
+            except Exception as exc:
+                _log(f"Engine reset failed (non-fatal): {exc}", Fore.YELLOW)
 
         try:
             result = fn(delay_multiplier=speed)
@@ -183,7 +195,6 @@ def main() -> None:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_file = f"/app/results/simulation_{ts}.json"
     try:
-        import os
         os.makedirs("/app/results", exist_ok=True)
         with open(out_file, "w") as f:
             json.dump(all_results, f, indent=2, default=str)
