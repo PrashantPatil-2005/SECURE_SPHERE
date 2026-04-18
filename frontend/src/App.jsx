@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTheme } from '@/hooks/use-theme';
 import { useRealtime } from '@/hooks/use-realtime';
-import Sidebar from '@/components/layout/Sidebar';
+import { useNavShell } from '@/hooks/useNavShell';
+import DashboardLayout from '@/components/layout/DashboardLayout';
 import Header from '@/components/layout/Header';
 import StatusBar from '@/components/layout/StatusBar';
 import Login from '@/pages/Login';
@@ -12,30 +13,28 @@ import Incidents from '@/pages/Incidents';
 import Topology from '@/pages/Topology';
 import RiskScores from '@/pages/RiskScores';
 import System from '@/pages/System';
+import Mitre from '@/pages/Mitre';
 import { Skeleton } from '@/components/ui/Spinner';
 import { api } from '@/lib/api';
+import { NAV_SHELL } from '@/components/nav/navConfig';
 
 export default function App() {
-  // Theme
   const { theme, toggle: toggleTheme } = useTheme();
+  const { shell, setShell } = useNavShell();
 
-  // Auth
   const [authed, setAuthed] = useState(() =>
     !!(localStorage.getItem('securisphere_token') || sessionStorage.getItem('securisphere_token'))
   );
   const handleLogin = useCallback(() => setAuthed(true), []);
 
-  // Tab routing
   const [tab, setTab] = useState('dashboard');
 
-  // Real-time data
   const {
     events, incidents, riskScores, metrics, timeline,
     topology, systemStatus, connected, loading, lastUpdate,
     usingMock, refetch, setEvents, setIncidents,
   } = useRealtime();
 
-  // Handlers
   const handleClear = async () => {
     if (!window.confirm('Clear all event data?')) return;
     try {
@@ -48,28 +47,37 @@ export default function App() {
     }
   };
 
-  const handleReplayRequest = useCallback((incidentId) => {
+  const handleReplayRequest = useCallback(() => {
     setTab('topology');
   }, []);
 
-  // Auth gate
   if (!authed) {
     return <Login onLogin={handleLogin} />;
   }
 
-  // Loading skeleton
   if (loading && events.length === 0) {
+    const isTop = shell === NAV_SHELL.TOP;
     return (
-      <div className="flex min-h-screen bg-base-950">
-        <div className="w-16 bg-base-900 border-r border-white/[0.05]" />
-        <div className="flex-1 flex flex-col">
-          <div className="h-12 border-b border-white/[0.05] bg-base-900/80" />
-          <div className="flex-1 p-6 space-y-4">
-            <div className="grid grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28 rounded-[10px]" />)}
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-64 rounded-[10px]" />)}
+      <div className="flex min-h-screen flex-col bg-base-950">
+        {!isTop && <div className="h-12 shrink-0 border-b border-dashed border-white/[0.06] bg-base-900/80" />}
+        <div className="flex min-h-0 flex-1 flex-row">
+          {shell === NAV_SHELL.SIDEBAR && (
+            <div className="w-[130px] shrink-0 border-r border-dashed border-white/[0.06] bg-base-900/80" />
+          )}
+          <div className="flex min-w-0 flex-1 flex-col">
+            {isTop && <div className="h-[52px] shrink-0 border-b border-dashed border-white/[0.06] bg-base-900/80" />}
+            <div className="h-12 shrink-0 border-b border-white/[0.05] bg-base-900/60" />
+            <div className="flex-1 space-y-4 p-6">
+              <div className="grid grid-cols-4 gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-28 rounded-[10px]" />
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-64 rounded-[10px]" />
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -80,7 +88,15 @@ export default function App() {
   const renderTab = () => {
     switch (tab) {
       case 'dashboard':
-        return <Dashboard events={events} incidents={incidents} metrics={metrics} timeline={timeline} riskScores={riskScores} />;
+        return (
+          <Dashboard
+            events={events}
+            incidents={incidents}
+            metrics={metrics}
+            timeline={timeline}
+            riskScores={riskScores}
+          />
+        );
       case 'events':
         return <Events events={events} />;
       case 'incidents':
@@ -89,26 +105,41 @@ export default function App() {
         return <Topology topology={topology} riskScores={riskScores} incidents={incidents} />;
       case 'risk':
         return <RiskScores riskScores={riskScores} />;
+      case 'mitre':
+        return <Mitre />;
       case 'system':
-        return <System systemStatus={systemStatus} onRefresh={refetch} />;
+        return (
+          <System
+            systemStatus={systemStatus}
+            onRefresh={refetch}
+            navShell={shell}
+            onNavShellChange={setShell}
+          />
+        );
       default:
-        return <Dashboard events={events} incidents={incidents} metrics={metrics} timeline={timeline} riskScores={riskScores} />;
+        return (
+          <Dashboard
+            events={events}
+            incidents={incidents}
+            metrics={metrics}
+            timeline={timeline}
+            riskScores={riskScores}
+          />
+        );
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-base-950 dark:bg-base-950">
-      <Sidebar
-        activeTab={tab}
-        onTabChange={setTab}
-        badges={{ events: events.length, incidents: incidents.length }}
-        connected={connected}
-      />
-
-      <div className="flex flex-col flex-1 ml-16 min-h-screen transition-all duration-200">
+    <DashboardLayout
+      shell={shell}
+      activeTab={tab}
+      onTabChange={setTab}
+      badges={{ events: events.length, incidents: incidents.length }}
+      connected={connected}
+      lastUpdate={lastUpdate}
+      onProfileClick={() => setTab('system')}
+      toolbar={
         <Header
-          connected={connected}
-          lastUpdate={lastUpdate}
           incidentCount={incidents.length}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -116,21 +147,8 @@ export default function App() {
           onClear={handleClear}
           onProfileClick={() => setTab('system')}
         />
-
-        <main className="flex-1 p-6 overflow-y-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={tab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderTab()}
-            </motion.div>
-          </AnimatePresence>
-        </main>
-
+      }
+      statusBar={
         <StatusBar
           connected={connected}
           lastUpdate={lastUpdate}
@@ -138,7 +156,19 @@ export default function App() {
           incidentCount={incidents.length}
           usingMock={usingMock}
         />
-      </div>
-    </div>
+      }
+    >
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18 }}
+        >
+          {renderTab()}
+        </motion.div>
+      </AnimatePresence>
+    </DashboardLayout>
   );
 }

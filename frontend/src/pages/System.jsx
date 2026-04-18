@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { NAV_SHELL } from '@/components/nav/navConfig';
 
 const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
@@ -14,7 +15,12 @@ const FALLBACK_CONTAINERS = [
   'api-gateway', 'frontend', 'database', 'topology-collector'
 ];
 
-export default function System({ systemStatus = {}, onRefresh }) {
+export default function System({
+  systemStatus = {},
+  onRefresh,
+  navShell = NAV_SHELL.SIDEBAR,
+  onNavShellChange,
+}) {
   const [simLog, setSimLog] = useState([]);
   const [running, setRunning] = useState(null);
   const [webhook, setWebhook] = useState('');
@@ -131,6 +137,25 @@ export default function System({ systemStatus = {}, onRefresh }) {
               <label className="text-[11px] text-base-400 mb-1 block">Refresh Interval</label>
               <Input defaultValue="15000" type="number" className="text-xs" />
             </div>
+            {onNavShellChange && (
+              <div>
+                <label className="text-[11px] text-base-400 mb-1 block">Navigation shell</label>
+                <select
+                  value={navShell}
+                  onChange={(e) => onNavShellChange(e.target.value)}
+                  className="h-9 w-full rounded-md border border-white/[0.08] bg-base-950/50 px-2 font-mono text-xs text-base-200 outline-none focus:border-accent/40"
+                >
+                  <option value={NAV_SHELL.SIDEBAR}>Sidebar + ⌘K palette (default)</option>
+                  <option value={NAV_SHELL.TOP}>Top navigation bar</option>
+                  <option value={NAV_SHELL.MINIMAL}>Command-first (minimal chrome)</option>
+                </select>
+                <p className="mt-1 text-[10px] leading-snug text-base-600">
+                  Sidebar stays discoverable; ⌘K / Ctrl+K command palette is always available for navigation,
+                  filters, and actions.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="text-[11px] text-base-400 mb-1 block">Discord Webhook</label>
               <div className="flex gap-2">
