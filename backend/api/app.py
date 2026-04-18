@@ -828,9 +828,17 @@ def _bootstrap_database_schema():
     This keeps cloud deployments (e.g., Render managed Postgres) from
     failing when the database starts empty.
     """
-    sql_path = Path(__file__).resolve().parents[2] / "scripts" / "init_db.sql"
-    if not sql_path.exists():
-        logger.warning("DB bootstrap skipped: %s not found", sql_path)
+    here = Path(__file__).resolve()
+    candidates = []
+    for depth in range(1, min(len(here.parents), 4)):
+        candidates.append(here.parents[depth - 1] / "scripts" / "init_db.sql")
+    candidates.extend([
+        Path("/app/scripts/init_db.sql"),
+        Path("/scripts/init_db.sql"),
+    ])
+    sql_path = next((p for p in candidates if p.exists()), None)
+    if sql_path is None:
+        logger.warning("DB bootstrap skipped: init_db.sql not found in %s", candidates)
         return
 
     try:

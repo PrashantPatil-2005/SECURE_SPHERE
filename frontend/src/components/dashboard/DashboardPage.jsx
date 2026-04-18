@@ -29,6 +29,7 @@ export default function DashboardPage({
   metrics = {},
   timeline = [],
   riskScores = {},
+  topology = { nodes: [], edges: [] },
 }) {
   const navigate = useNavigate();
 
@@ -120,6 +121,8 @@ export default function DashboardPage({
               events={events}
               incidents={incidents}
               timeline={timeline}
+              topology={topology}
+              riskScores={riskScores}
               selectedId={selectedId}
               onSelectIncident={onSelectIncident}
             />
@@ -130,6 +133,7 @@ export default function DashboardPage({
               events={events}
               incidents={incidents}
               timeline={timeline}
+              topology={topology}
               riskScores={riskScores}
               selectedId={selectedId}
               onSelectIncident={onSelectIncident}

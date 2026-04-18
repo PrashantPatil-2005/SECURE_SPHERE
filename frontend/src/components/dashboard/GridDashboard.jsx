@@ -7,6 +7,7 @@ import KPIBar from './KPIBar';
 import LiveFeed from './LiveFeed';
 import MITREPanel from './MITREPanel';
 import RiskHeatmap from './RiskHeatmap';
+import ServiceTopologyCard from './ServiceTopologyCard';
 
 /**
  * Variant B — balanced monitoring wall.
@@ -17,6 +18,7 @@ export default function GridDashboard({
   incidents,
   timeline,
   riskScores,
+  topology = { nodes: [], edges: [] },
   selectedId,
   onSelectIncident,
 }) {
@@ -53,6 +55,14 @@ export default function GridDashboard({
         <LiveFeed events={events} maxItems={20} />
         <IncidentList incidents={incidents} maxItems={6} selectedId={selectedId} onSelect={onSelectIncident} />
       </div>
+
+      <ServiceTopologyCard
+        topology={topology}
+        riskScores={riskScores}
+        incidents={incidents}
+        selectedId={selectedId}
+        height={360}
+      />
 
       <MITREPanel />
     </div>

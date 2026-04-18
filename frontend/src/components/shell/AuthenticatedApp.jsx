@@ -209,6 +209,7 @@ export default function AuthenticatedApp() {
                     metrics={metrics}
                     timeline={timeline}
                     riskScores={riskScores}
+                    topology={topology}
                   />
                 }
               />

@@ -3,9 +3,19 @@ import ChartCard from './ChartCard';
 import IncidentList from './IncidentList';
 import KPIBar from './KPIBar';
 import LiveFeed from './LiveFeed';
+import ServiceTopologyCard from './ServiceTopologyCard';
 
 /** Variant A — incident-first triage lane. */
-export default function TriageDashboard({ kpiItems, events, incidents, timeline, selectedId, onSelectIncident }) {
+export default function TriageDashboard({
+  kpiItems,
+  events,
+  incidents,
+  timeline,
+  topology = { nodes: [], edges: [] },
+  riskScores = {},
+  selectedId,
+  onSelectIncident,
+}) {
   return (
     <div className="space-y-4">
       <KPIBar items={kpiItems} />
@@ -17,6 +27,12 @@ export default function TriageDashboard({ kpiItems, events, incidents, timeline,
             maxItems={14}
             selectedId={selectedId}
             onSelect={onSelectIncident}
+          />
+          <ServiceTopologyCard
+            topology={topology}
+            riskScores={riskScores}
+            incidents={incidents}
+            selectedId={selectedId}
           />
           <ChartCard title="Events over time" description="Volume by severity bucket in the live window.">
             {timeline.length > 0 ? (

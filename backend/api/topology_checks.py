@@ -21,6 +21,7 @@ bp = Blueprint("topology_checks", __name__)
 
 TOPOLOGY_BASE = os.getenv("TOPOLOGY_URL", "http://topology-collector:5080")
 ENGINE_BASE = os.getenv("ENGINE_URL", "http://correlation-engine:5070")
+API_BASE = os.getenv("API_SELF_URL", "http://localhost:8000")
 PROBE_TIMEOUT = 2  # seconds
 CACHE_KEY = "topology:checks"
 CACHE_TTL = 15  # seconds
@@ -82,6 +83,53 @@ def _probe_collector_up() -> tuple[bool, str]:
     return ok, "securisphere-topology" if ok else "collector unreachable"
 
 
+def _probe_d3_overlay() -> tuple[bool, str]:
+    """
+    Pass once /topology/graph returns nodes carrying a threat_level field —
+    that is the payload contract the dashboard D3 overlay consumes to colour
+    nodes by risk. Without threat_level the overlay cannot render.
+    """
+    url = f"{TOPOLOGY_BASE}/topology/graph"
+    try:
+        resp = requests.get(url, timeout=PROBE_TIMEOUT)
+        if resp.status_code != 200:
+            return False, f"/topology/graph → HTTP {resp.status_code}"
+        body = resp.json()
+        nodes = body.get("nodes") or []
+        if nodes and any("threat_level" in n for n in nodes):
+            return True, f"nodes[threat_level] ({len(nodes)})"
+        return False, "nodes missing threat_level"
+    except Exception as exc:
+        return False, f"/topology/graph → {type(exc).__name__}"
+
+
+def _probe_kill_chain_anim() -> tuple[bool, str]:
+    """
+    Pass once /api/kill-chains returns at least one chain with a non-empty
+    service_path — the edge list the dashboard animates across the graph.
+    """
+    url = f"{API_BASE}/api/kill-chains?limit=5"
+    try:
+        resp = requests.get(url, timeout=PROBE_TIMEOUT)
+        if resp.status_code != 200:
+            return False, f"/api/kill-chains → HTTP {resp.status_code}"
+        body = resp.json()
+        data = body.get("data") or body
+        chains = data.get("kill_chains") or []
+        best = 0
+        for kc in chains:
+            path = kc.get("service_path") or []
+            if isinstance(path, list) and len(path) > best:
+                best = len(path)
+        if best >= 2:
+            return True, f"multi-hop service_path len={best}"
+        if best == 1:
+            return True, f"service_path present (len=1, multi-hop pending)"
+        return False, "no kill_chain with service_path"
+    except Exception as exc:
+        return False, f"/api/kill-chains → {type(exc).__name__}"
+
+
 def _probe_enrichment() -> tuple[bool, str]:
     """
     Confirm the correlation engine is live by probing its health endpoint.
@@ -105,6 +153,8 @@ def _build_checks() -> list:
     hist_ok, hist_ev = _probe_get("/topology/history?limit=1")
     edge_ok, edge_ev = _probe_post_edge()
     enr_ok, enr_ev = _probe_enrichment()
+    d3_ok, d3_ev = _probe_d3_overlay()
+    kc_ok, kc_ev = _probe_kill_chain_anim()
 
     def row(id_, label, ok, evidence):
         return {
@@ -120,8 +170,8 @@ def _build_checks() -> list:
         row("edge-endpoint",   "POST /topology/edge for runtime edge registration",    edge_ok,  edge_ev),
         row("history-endpoint","GET /topology/history with PostgreSQL persistence",    hist_ok,  hist_ev),
         row("enrichment",      "Correlation engine consumes source_service_name",      enr_ok,   enr_ev),
-        {"id": "d3-overlay",     "label": "Dashboard topology panel renders live attack overlay", "state": "static", "evidence": "TopologyGraph.jsx"},
-        {"id": "kill-chain-anim","label": "Kill-chain traversal animates in real time",           "state": "static", "evidence": "TopologyGraph.jsx"},
+        row("d3-overlay",      "Dashboard topology panel renders live attack overlay", d3_ok,    d3_ev),
+        row("kill-chain-anim", "Kill-chain traversal animates in real time",           kc_ok,    kc_ev),
     ]
 
 
