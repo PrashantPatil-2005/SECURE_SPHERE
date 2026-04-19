@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Server, Play, Loader2, Terminal, Webhook } from 'lucide-react';
+import { Server, Webhook, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
@@ -14,22 +13,7 @@ const FALLBACK_CONTAINERS = [
 ];
 
 export default function System({ systemStatus = {}, onRefresh }) {
-  const [simLog, setSimLog] = useState([]);
-  const [running, setRunning] = useState(null);
   const [webhook, setWebhook] = useState('');
-
-  const runScenario = async (scenario) => {
-    setRunning(scenario);
-    setSimLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Starting Scenario ${scenario.toUpperCase()}...`]);
-    try {
-      const res = await api.simulateAttack(scenario);
-      setSimLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${res.message || 'Scenario launched'}`]);
-    } catch (err) {
-      setSimLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: ${err.message}`]);
-    } finally {
-      setRunning(null);
-    }
-  };
 
   return (
     <motion.div {...anim} className="flex flex-col gap-4">
@@ -76,40 +60,29 @@ export default function System({ systemStatus = {}, onRefresh }) {
         })()}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* Attack Simulator */}
+      <div className="grid grid-cols-1 gap-4">
+        {/* Configuration */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-accent" />
-              <CardTitle>Attack Simulator</CardTitle>
+              <ExternalLink className="w-4 h-4 text-red-400" />
+              <CardTitle>Red Team Console</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex gap-2">
-              {['a', 'b', 'c'].map(scenario => (
-                <Button
-                  key={scenario}
-                  variant="primary"
-                  size="md"
-                  onClick={() => runScenario(scenario)}
-                  disabled={running !== null}
-                  className="flex-1"
-                >
-                  {running === scenario ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                  Scenario {scenario.toUpperCase()}
-                </Button>
-              ))}
-            </div>
-
-            {/* Sim log */}
-            <div className="h-40 rounded-lg bg-base-950 border border-base-800 p-3 overflow-y-auto font-mono text-[11px] text-base-400 leading-relaxed">
-              {simLog.length > 0 ? simLog.map((line, i) => (
-                <div key={i} className="py-0.5">{line}</div>
-              )) : (
-                <div className="text-base-600">Click a scenario to start attack simulation...</div>
-              )}
-            </div>
+          <CardContent className="flex items-center justify-between gap-4">
+            <p className="text-xs text-base-400">
+              Attack scenarios moved to a standalone console. SecuriSphere is the defender's
+              SOC dashboard — attacker controls are isolated on a dedicated page.
+            </p>
+            <a
+              href="/attacker"
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-red-400 hover:bg-red-500/20"
+            >
+              Open Attack Console
+              <ExternalLink className="h-3 w-3" />
+            </a>
           </CardContent>
         </Card>
 

@@ -5,14 +5,20 @@ WORKDIR /app
 # Install dependencies
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
 RUN mkdir -p /var/log/securisphere
 
-# Copy application files
-COPY . .
+# Copy API application files
+COPY backend/api/ /app/
+
+# Copy the MITRE map module shared with the correlation engine
+COPY backend/engine/mitre/ /app/mitre/
+
+# Copy the attacker module so /api/attack/run can spawn scenarios
+COPY attacker/ /app/attacker/
 
 # Expose port
 EXPOSE 8000

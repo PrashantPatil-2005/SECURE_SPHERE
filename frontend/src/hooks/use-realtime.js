@@ -19,14 +19,28 @@ export function useRealtime() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [usingMock, setUsingMock] = useState(false);
 
-  const pollRef = useRef(null);
+  const pollRef = useRef(null);            // legacy catch-all fallback
+  const incidentPollRef = useRef(null);    // WS-disconnect fallback for incidents
   const touch = () => setLastUpdate(new Date().toISOString());
+
+  // Incidents are delivered via WebSocket (new_incident). This poller is
+  // only active as a fallback when the socket is disconnected.
+  const fetchIncidents = useCallback(async () => {
+    try {
+      const res = await api.getIncidents();
+      const list = res?.incidents || res || [];
+      setIncidents(list.slice(0, MAX_INCIDENTS));
+      touch();
+    } catch {
+      /* swallow — WS will resume or next tick retries */
+    }
+  }, []);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [evRes, incRes, riskRes, topoRes, metricsRes, timeRes, sysRes] = await Promise.allSettled([
+      // Note: incidents intentionally omitted — delivered via WebSocket push.
+      const [evRes, riskRes, topoRes, metricsRes, timeRes, sysRes] = await Promise.allSettled([
         api.getEvents(),
-        api.getIncidents(),
         api.getRiskScores(),
         api.getTopology(),
         api.getDashboardSummary(),
@@ -35,7 +49,6 @@ export function useRealtime() {
       ]);
 
       if (evRes.status === 'fulfilled') setEvents(evRes.value?.events || evRes.value || []);
-      if (incRes.status === 'fulfilled') setIncidents(incRes.value?.incidents || incRes.value || []);
       if (riskRes.status === 'fulfilled') setRiskScores(riskRes.value?.risk_scores || riskRes.value || {});
       if (topoRes.status === 'fulfilled') setTopology(topoRes.value || { nodes: [], edges: [] });
       if (metricsRes.status === 'fulfilled') {
@@ -67,19 +80,32 @@ export function useRealtime() {
     const socket = connectSocket({
       onConnect: () => {
         setConnected(true);
-        if (pollRef.current) clearInterval(pollRef.current);
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        if (incidentPollRef.current) {
+          clearInterval(incidentPollRef.current);
+          incidentPollRef.current = null;
+        }
       },
       onDisconnect: () => {
         setConnected(false);
-        // Fall back to polling
-        pollRef.current = setInterval(fetchAll, 3000);
+        // WS gone — poll incidents at 5s. Other feeds keep their 15s cadence.
+        if (!incidentPollRef.current) {
+          incidentPollRef.current = setInterval(fetchIncidents, 5000);
+        }
       },
       onEvent: (ev) => {
         setEvents(prev => [ev, ...prev].slice(0, MAX_EVENTS));
         touch();
       },
       onIncident: (inc) => {
-        setIncidents(prev => [inc, ...prev].slice(0, MAX_INCIDENTS));
+        // Primary delivery path — pushed from backend immediately on
+        // correlated_incidents pub/sub. Dedupe by incident_id.
+        setIncidents(prev => {
+          if (inc?.incident_id && prev.some(p => p.incident_id === inc.incident_id)) {
+            return prev;
+          }
+          return [inc, ...prev].slice(0, MAX_INCIDENTS);
+        });
         touch();
       },
       onRiskUpdate: (data) => {
@@ -103,18 +129,20 @@ export function useRealtime() {
       },
     });
 
-    // Initial fetch
+    // Initial fetch — hydrate everything including the incidents list once.
     fetchAll();
+    fetchIncidents();
 
-    // Periodic refresh
+    // Periodic refresh for polled feeds (not incidents — WS handles those).
     const refreshId = setInterval(fetchAll, 15000);
 
     return () => {
       clearInterval(refreshId);
       if (pollRef.current) clearInterval(pollRef.current);
+      if (incidentPollRef.current) clearInterval(incidentPollRef.current);
       disconnectSocket();
     };
-  }, [fetchAll]);
+  }, [fetchAll, fetchIncidents]);
 
   return {
     events, incidents, riskScores, metrics, timeline,

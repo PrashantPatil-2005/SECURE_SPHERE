@@ -1,267 +1,62 @@
 {
-  "generated_at": "2026-04-18T15:19:43.329765+00:00",
+  "generated_at": "2026-04-18T17:38:45.948403+00:00",
   "backend_url": "http://localhost:8000",
   "runs_per_scenario": 3,
   "scenarios": [
     {
-      "scenario": "a",
+      "scenario": "benign",
       "runs": 3,
       "trials": [
         {
           "trial": 1,
-          "scenario": "a",
-          "started_at": "2026-04-18T15:17:21.142805+00:00",
-          "scenario_seconds": 12.94,
+          "scenario": "benign",
+          "started_at": "2026-04-18T17:37:15.204917+00:00",
+          "scenario_seconds": 0.82,
           "exit_code": 0,
-          "new_incidents": 1,
-          "incident_ids": [
-            "54f3a1b4-fe81-4179-bfab-2846eb08efa1"
-          ],
-          "mttd_seconds_avg": 0.006,
-          "mttd_seconds_all": [
-            0.006
-          ],
-          "severities": [
-            "medium"
-          ],
-          "mitre_techniques": [
-            "T1110"
-          ],
-          "max_service_path": 1,
+          "new_incidents": 0,
+          "incident_ids": [],
+          "mttd_seconds_avg": null,
+          "mttd_seconds_all": [],
+          "severities": [],
+          "mitre_techniques": [],
+          "max_service_path": 0,
           "stderr_tail": []
         },
         {
           "trial": 2,
-          "scenario": "a",
-          "started_at": "2026-04-18T15:17:37.218243+00:00",
-          "scenario_seconds": 12.63,
+          "scenario": "benign",
+          "started_at": "2026-04-18T17:37:46.555695+00:00",
+          "scenario_seconds": 0.77,
           "exit_code": 0,
-          "new_incidents": 1,
-          "incident_ids": [
-            "9f9d56a8-ee7e-4b43-ba0d-eb670087327a"
-          ],
-          "mttd_seconds_avg": 0.004,
-          "mttd_seconds_all": [
-            0.004
-          ],
-          "severities": [
-            "medium"
-          ],
-          "mitre_techniques": [
-            "T1110"
-          ],
-          "max_service_path": 1,
+          "new_incidents": 0,
+          "incident_ids": [],
+          "mttd_seconds_avg": null,
+          "mttd_seconds_all": [],
+          "severities": [],
+          "mitre_techniques": [],
+          "max_service_path": 0,
           "stderr_tail": []
         },
         {
           "trial": 3,
-          "scenario": "a",
-          "started_at": "2026-04-18T15:17:53.052876+00:00",
-          "scenario_seconds": 12.78,
+          "scenario": "benign",
+          "started_at": "2026-04-18T17:38:17.849729+00:00",
+          "scenario_seconds": 0.78,
           "exit_code": 0,
-          "new_incidents": 1,
-          "incident_ids": [
-            "60ccb049-bb91-4933-941d-b3c648505926"
-          ],
-          "mttd_seconds_avg": 0.003,
-          "mttd_seconds_all": [
-            0.003
-          ],
-          "severities": [
-            "medium"
-          ],
-          "mitre_techniques": [
-            "T1110"
-          ],
-          "max_service_path": 1,
+          "new_incidents": 0,
+          "incident_ids": [],
+          "mttd_seconds_avg": null,
+          "mttd_seconds_all": [],
+          "severities": [],
+          "mitre_techniques": [],
+          "max_service_path": 0,
           "stderr_tail": []
         }
       ],
       "verdict": {
         "pass": true,
-        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.004s across 3 runs)",
-        "total_new_incidents": 3
-      }
-    },
-    {
-      "scenario": "b",
-      "runs": 3,
-      "trials": [
-        {
-          "trial": 1,
-          "scenario": "b",
-          "started_at": "2026-04-18T15:18:09.021664+00:00",
-          "scenario_seconds": 13.12,
-          "exit_code": 0,
-          "new_incidents": 2,
-          "incident_ids": [
-            "47064637-630d-4bdc-ba5f-51bb117c7663",
-            "821ecd7e-750e-4692-9b4e-007aec397cf2"
-          ],
-          "mttd_seconds_avg": 0.148,
-          "mttd_seconds_all": [
-            0.212,
-            0.085
-          ],
-          "severities": [
-            "high"
-          ],
-          "mitre_techniques": [
-            "T1041",
-            "T1048",
-            "T1068",
-            "T1190",
-            "T1530"
-          ],
-          "max_service_path": 1,
-          "stderr_tail": []
-        },
-        {
-          "trial": 2,
-          "scenario": "b",
-          "started_at": "2026-04-18T15:18:25.290061+00:00",
-          "scenario_seconds": 13.19,
-          "exit_code": 0,
-          "new_incidents": 2,
-          "incident_ids": [
-            "19066553-9048-423b-bc83-0c5d9e6c595e",
-            "cef91ebf-1eea-413c-b4f1-b4c240658ce2"
-          ],
-          "mttd_seconds_avg": 0.136,
-          "mttd_seconds_all": [
-            0.194,
-            0.077
-          ],
-          "severities": [
-            "high"
-          ],
-          "mitre_techniques": [
-            "T1041",
-            "T1048",
-            "T1068",
-            "T1190",
-            "T1530"
-          ],
-          "max_service_path": 1,
-          "stderr_tail": []
-        },
-        {
-          "trial": 3,
-          "scenario": "b",
-          "started_at": "2026-04-18T15:18:41.690469+00:00",
-          "scenario_seconds": 13.32,
-          "exit_code": 0,
-          "new_incidents": 2,
-          "incident_ids": [
-            "3eb8b684-243c-420f-9749-25c16f0914d4",
-            "f9aa9dec-f619-45a0-bfaf-ac7554cb3d36"
-          ],
-          "mttd_seconds_avg": 0.137,
-          "mttd_seconds_all": [
-            0.193,
-            0.08
-          ],
-          "severities": [
-            "high"
-          ],
-          "mitre_techniques": [
-            "T1041",
-            "T1048",
-            "T1068",
-            "T1190",
-            "T1530"
-          ],
-          "max_service_path": 1,
-          "stderr_tail": []
-        }
-      ],
-      "verdict": {
-        "pass": true,
-        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.14s across 3 runs)",
-        "total_new_incidents": 6
-      }
-    },
-    {
-      "scenario": "c",
-      "runs": 3,
-      "trials": [
-        {
-          "trial": 1,
-          "scenario": "c",
-          "started_at": "2026-04-18T15:18:58.169635+00:00",
-          "scenario_seconds": 12.8,
-          "exit_code": 0,
-          "new_incidents": 1,
-          "incident_ids": [
-            "879ef9e7-3f2a-4c3a-be2a-2057115548d1"
-          ],
-          "mttd_seconds_avg": 0.119,
-          "mttd_seconds_all": [
-            0.119
-          ],
-          "severities": [
-            "high"
-          ],
-          "mitre_techniques": [
-            "T1068",
-            "T1190"
-          ],
-          "max_service_path": 1,
-          "stderr_tail": []
-        },
-        {
-          "trial": 2,
-          "scenario": "c",
-          "started_at": "2026-04-18T15:19:14.186803+00:00",
-          "scenario_seconds": 12.91,
-          "exit_code": 0,
-          "new_incidents": 1,
-          "incident_ids": [
-            "0be472d7-83a7-4930-830c-e0925bffa78f"
-          ],
-          "mttd_seconds_avg": 0.128,
-          "mttd_seconds_all": [
-            0.128
-          ],
-          "severities": [
-            "high"
-          ],
-          "mitre_techniques": [
-            "T1068",
-            "T1190"
-          ],
-          "max_service_path": 1,
-          "stderr_tail": []
-        },
-        {
-          "trial": 3,
-          "scenario": "c",
-          "started_at": "2026-04-18T15:19:30.360990+00:00",
-          "scenario_seconds": 12.95,
-          "exit_code": 0,
-          "new_incidents": 1,
-          "incident_ids": [
-            "87dfde80-042a-42ea-be94-4efefea7355f"
-          ],
-          "mttd_seconds_avg": 0.084,
-          "mttd_seconds_all": [
-            0.084
-          ],
-          "severities": [
-            "high"
-          ],
-          "mitre_techniques": [
-            "T1068",
-            "T1190"
-          ],
-          "max_service_path": 1,
-          "stderr_tail": []
-        }
-      ],
-      "verdict": {
-        "pass": true,
-        "reason": "every trial produced >=1 incident and measurable MTTD (avg 0.11s across 3 runs)",
-        "total_new_incidents": 3
+        "reason": "benign scenario produced 0 incidents across all runs",
+        "total_new_incidents": 0
       }
     }
   ],

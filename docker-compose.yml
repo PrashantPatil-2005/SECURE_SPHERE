@@ -201,8 +201,8 @@ services:
 
   backend:
     build:
-      context: ./backend/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/api/Dockerfile
     container_name: securisphere-backend
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -216,6 +216,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
       JWT_SECRET: ${JWT_SECRET:-securisphere-jwt-secret-2024}
+      SECURISPHERE_API_URL: http://api-server:5000
+      SECURISPHERE_AUTH_URL: http://auth-service:5001
+      SECURISPHERE_BACKEND_URL: http://localhost:8000
+      SECURISPHERE_WEBAPP_URL: http://web-app:80
+      SECURISPHERE_ENGINE_URL: http://correlation-engine:5070
+      SECURISPHERE_AUTHMON_URL: http://auth-monitor:5060
     depends_on:
       redis:
         condition: service_healthy

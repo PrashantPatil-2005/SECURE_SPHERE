@@ -1,14 +1,16 @@
 import os
+import sys
 import time
 import json
 import uuid
 import threading
+import subprocess
 import logging
 from pathlib import Path
 import redis
 import requests
 from datetime import datetime, timedelta
-from collections import defaultdict
+from collections import defaultdict, deque
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -18,6 +20,18 @@ monkey.patch_all()
 
 from auth import auth_bp
 from topology_checks import bp as topology_checks_bp
+
+# --- MITRE ATT&CK static map (shared with correlation engine) ---------------
+# Docker: copied to /app/mitre/; local: lives at backend/engine/mitre/.
+_here = Path(__file__).resolve()
+for _cand in (_here.parent, _here.parent.parent / "engine"):
+    if (_cand / "mitre" / "mitre_map.py").exists():
+        sys.path.insert(0, str(_cand))
+        break
+try:
+    from mitre.mitre_map import MITRE_MAP, TACTIC_ORDER
+except ImportError:
+    MITRE_MAP, TACTIC_ORDER = {}, []
 
 
 # ... (logging setup) ...
@@ -61,6 +75,17 @@ def connect_redis():
             retry_count += 1
             logger.warning(f"⏳ Redis not ready yet. Retrying in 2 seconds... (Attempt {retry_count})")
             time.sleep(2)
+
+def _looks_like_ip(s: str) -> bool:
+    if not s or not isinstance(s, str):
+        return False
+    parts = s.split('.')
+    if len(parts) != 4:
+        return False
+    try:
+        return all(0 <= int(p) <= 255 for p in parts)
+    except ValueError:
+        return False
 
 # --- Helper Functions ---
 
@@ -336,27 +361,40 @@ def get_incident(incident_id):
 @app.route('/api/risk-scores')
 def list_risk_scores():
     risks = get_risk_scores()
-    
-    # Calculate summary
+
+    # Normalise each entry so callers can rely on `entity` / `entity_type`
+    # regardless of whether the key is a service name or a fallback IP.
+    normalised = {}
+    for key, r in risks.items():
+        entity_type = r.get('entity_type') or ('service' if not _looks_like_ip(key) else 'ip')
+        normalised[key] = {
+            **r,
+            "entity":      r.get('entity') or key,
+            "entity_type": entity_type,
+            "source_ip":   r.get('source_ip') or (key if entity_type == 'ip' else None),
+        }
+
     summary = {
-        "total_entities": len(risks),
-        "critical_count": 0, 
-        "threatening_count": 0,
+        "total_entities":   len(normalised),
+        "service_count":    sum(1 for v in normalised.values() if v["entity_type"] == "service"),
+        "ip_count":         sum(1 for v in normalised.values() if v["entity_type"] == "ip"),
+        "critical_count":   0,
+        "threatening_count":0,
         "suspicious_count": 0,
-        "normal_count": 0
+        "normal_count":     0,
     }
-    
-    for r in risks.values():
+
+    for r in normalised.values():
         score = r.get('current_score', 0)
         if score >= 90: summary["critical_count"] += 1
         elif score >= 70: summary["threatening_count"] += 1
         elif score >= 30: summary["suspicious_count"] += 1
         else: summary["normal_count"] += 1
-            
+
     return jsonify({
         "status": "success",
         "data": {
-            "risk_scores": risks,
+            "risk_scores": normalised,
             "summary": summary
         }
     })
@@ -949,100 +987,86 @@ def demo_status():
 @app.route('/api/mitre-mapping')
 def mitre_mapping():
     """
-    Return MITRE ATT&CK technique frequency across all correlated incidents.
-
-    Aggregates techniques from the in-Redis incident list so no DB dependency.
+    Merge the static MITRE_MAP (every technique SecuriSphere can detect)
+    with live hit counts derived from Redis incidents and the correlation
+    engine stats. Returns a full coverage breakdown suitable for the
+    MITRE page.
     """
-    technique_counts: dict = defaultdict(int)
-    technique_incidents: dict = defaultdict(list)
+    # ---- 1. Aggregate live hit counts -----------------------------------
+    hit_counts: dict = defaultdict(int)
+    incident_ids: dict = defaultdict(list)
 
     incidents = get_incidents(100)
     for inc in incidents:
         for technique in (inc.get("mitre_techniques") or []):
             if technique:
-                technique_counts[technique] += 1
-                technique_incidents[technique].append(inc.get("incident_id"))
+                hit_counts[technique] += 1
+                incident_ids[technique].append(inc.get("incident_id"))
 
-    # Augment with descriptions
-    technique_info = {
-        "T1046":     "Network Service Discovery",
-        "T1595":     "Active Scanning",
-        "T1190":     "Exploit Public-Facing Application",
-        "T1110":     "Brute Force",
-        "T1110.004": "Credential Stuffing",
-        "T1078":     "Valid Accounts",
-        "T1003":     "OS Credential Dumping",
-        "T1021":     "Remote Services / Lateral Movement",
-        "T1071":     "Application Layer Protocol (C2 over HTTP)",
-        "T1530":     "Data from Cloud Storage Object",
-        "T1083":     "File and Directory Discovery",
-        "T1048":     "Exfiltration Over Alternative Protocol",
-        "T1068":     "Exploitation for Privilege Escalation",
-        "T1041":     "Exfiltration Over C2 Channel",
-        "T1570":     "Lateral Tool Transfer",
-        "T1548":     "Abuse Elevation Control Mechanism",
-        "T1526":     "Cloud Service Discovery",
-    }
-
-    technique_descriptions = {
-        "T1046":     "Adversaries enumerate running services on remote hosts to identify exploitable targets.",
-        "T1595":     "Active reconnaissance scans to gather information about the target network.",
-        "T1190":     "Exploit a weakness in an Internet-facing host such as SQL injection or XSS.",
-        "T1110":     "Systematic password guessing against authentication endpoints.",
-        "T1110.004": "Using credential dumps from breaches to test against target accounts.",
-        "T1078":     "Using existing valid credentials to access systems.",
-        "T1003":     "Dumping credentials from OS memory or password stores.",
-        "T1021":     "Using valid accounts to access remote services for lateral movement.",
-        "T1071":     "Communication over OSI application-layer protocols to blend with normal traffic.",
-        "T1530":     "Accessing data objects from improperly secured cloud storage.",
-        "T1083":     "Enumerating files and directories to discover sensitive data.",
-        "T1048":     "Stealing data over a different protocol than the C2 channel.",
-        "T1068":     "Exploiting a software vulnerability to elevate privileges.",
-        "T1041":     "Exfiltrating stolen data over the same channel used for command and control.",
-        "T1570":     "Transferring tools or files between compromised systems for lateral movement.",
-        "T1548":     "Circumventing privilege elevation controls to gain higher permissions.",
-        "T1526":     "Enumerating cloud services available after gaining initial access.",
-    }
-
-    result = []
-    for technique, count in sorted(technique_counts.items(), key=lambda x: -x[1]):
-        result.append({
-            "technique_id":   technique,
-            "name":           technique_info.get(technique, "Unknown Technique"),
-            "description":    technique_descriptions.get(technique, ""),
-            "hit_count":      count,
-            "incident_ids":   technique_incidents[technique][:10],  # truncate
-        })
-
-    # Also try to pull enriched data from the correlation engine
+    # Engine stats (in-memory mitre_hits counter) — merges even if the
+    # Redis incident list has been trimmed.
     try:
-        eng_resp = requests.get("http://correlation-engine:5070/engine/mitre-mapping", timeout=2)
+        eng_resp = requests.get(
+            "http://correlation-engine:5070/engine/mitre-mapping", timeout=2,
+        )
         if eng_resp.status_code == 200:
-            eng_data = eng_resp.json().get("data", {})
-            # Merge engine hits into our result
-            for tech, hits in eng_data.get("technique_hits", {}).items():
-                existing = next((r for r in result if r["technique_id"] == tech), None)
-                if existing:
-                    existing["engine_hit_count"] = hits
-                else:
-                    result.append({
-                        "technique_id": tech,
-                        "name": technique_info.get(tech, "Unknown Technique"),
-                        "description": technique_descriptions.get(tech, ""),
-                        "hit_count": 0,
-                        "engine_hit_count": hits,
-                        "incident_ids": [],
-                    })
+            eng_hits = (eng_resp.json().get("data") or {}).get("technique_hits") or {}
+            for tech, hits in eng_hits.items():
+                # Prefer the larger of the two counters
+                hit_counts[tech] = max(hit_counts[tech], int(hits or 0))
     except Exception:
         pass
+
+    # Optional Redis hash `mitre_hits` — reserved for future direct writes
+    if redis_available:
+        try:
+            redis_hits = redis_client.hgetall("mitre_hits") or {}
+            for tech, hits in redis_hits.items():
+                try:
+                    hit_counts[tech] = max(hit_counts[tech], int(hits))
+                except (TypeError, ValueError):
+                    pass
+        except Exception:
+            pass
+
+    # ---- 2. Compose technique rows from MITRE_MAP -----------------------
+    techniques = []
+    coverage_tally = {"full": 0, "partial": 0, "theoretical": 0}
+    tactics_summary: dict = defaultdict(int)
+
+    for tid, entry in MITRE_MAP.items():
+        row = {
+            "technique_id":      entry["technique_id"],
+            "technique_name":    entry["technique_name"],
+            "tactic":            entry["tactic"],
+            "tactic_id":         entry["tactic_id"],
+            "hit_count":         int(hit_counts.get(tid, 0)),
+            "coverage":          entry["coverage"],
+            "scenarios":         list(entry.get("scenarios", [])),
+            "detected_by":       list(entry.get("detected_by", [])),
+            "correlation_rules": list(entry.get("correlation_rules", [])),
+            "container_context": entry.get("container_context", ""),
+            "description":       entry.get("description", ""),
+            "incident_ids":      incident_ids.get(tid, [])[:10],
+        }
+        techniques.append(row)
+        coverage_tally[entry["coverage"]] = coverage_tally.get(entry["coverage"], 0) + 1
+        tactics_summary[entry["tactic"]] += 1
+
+    # Sort by hit_count desc, then by technique_id for stable ordering
+    techniques.sort(key=lambda r: (-r["hit_count"], r["technique_id"]))
 
     return jsonify({
         "status": "success",
         "data": {
-            "techniques":       result,
-            "total_unique":     len(result),
-            "total_incidents":  len(incidents),
-            "coverage_percent": round(len(result) / len(technique_info) * 100, 1),
+            "techniques":            techniques,
+            "tactics_summary":       dict(tactics_summary),
+            "total_techniques":      len(techniques),
+            "full_coverage":         coverage_tally.get("full", 0),
+            "partial_coverage":      coverage_tally.get("partial", 0),
+            "theoretical_coverage":  coverage_tally.get("theoretical", 0),
+            "total_incidents":       len(incidents),
+            "tactic_order":          TACTIC_ORDER,
         }
     })
 
@@ -1185,6 +1209,110 @@ def test_discord_config():
             
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- Attack console (spawns attacker scenarios) -----------------------------
+
+_ATTACK_VALID_SCENARIOS = {"a", "b", "c", "all"}
+_ATTACK_VALID_SPEEDS = {"demo", "normal", "fast"}
+
+_attack_lock = threading.Lock()
+_attack_log = deque(maxlen=100)
+_attack_state = {"running": False, "scenario": None, "pid": None, "proc": None}
+
+
+def _attack_append(line: str):
+    ts = datetime.utcnow().strftime("%H:%M:%S")
+    with _attack_lock:
+        _attack_log.append(f"[{ts}] {line.rstrip()}")
+
+
+def _attack_reader(proc, scenario):
+    try:
+        for line in iter(proc.stdout.readline, ''):
+            if not line:
+                break
+            _attack_append(line)
+    except Exception as e:
+        _attack_append(f"[reader-error] {e}")
+    finally:
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+        rc = proc.wait()
+        _attack_append(f"[done] scenario={scenario} exit={rc}")
+        with _attack_lock:
+            if _attack_state.get("pid") == proc.pid:
+                _attack_state["running"] = False
+                _attack_state["proc"] = None
+
+
+@app.route('/api/attack/run', methods=['POST'])
+def api_attack_run():
+    body = request.get_json(silent=True) or {}
+    scenario = str(body.get("scenario", "")).lower().strip()
+    speed = str(body.get("speed", "demo")).lower().strip()
+
+    if scenario not in _ATTACK_VALID_SCENARIOS:
+        return jsonify({"status": "error", "message": f"scenario must be one of {sorted(_ATTACK_VALID_SCENARIOS)}"}), 400
+    if speed not in _ATTACK_VALID_SPEEDS:
+        return jsonify({"status": "error", "message": f"speed must be one of {sorted(_ATTACK_VALID_SPEEDS)}"}), 400
+
+    with _attack_lock:
+        if _attack_state["running"]:
+            return jsonify({
+                "status": "busy",
+                "message": "attack already running",
+                "scenario": _attack_state["scenario"],
+                "pid": _attack_state["pid"],
+            }), 409
+
+    if scenario == "all":
+        runner = (
+            "from attacker.scenario_a import run as ra;"
+            "from attacker.scenario_b import run as rb;"
+            "from attacker.scenario_c import run as rc;"
+            f"print('>>> scenario A'); ra(speed={speed!r});"
+            f"print('>>> scenario B'); rb(speed={speed!r});"
+            f"print('>>> scenario C'); rc(speed={speed!r})"
+        )
+        cmd = [sys.executable, "-u", "-c", runner]
+    else:
+        cmd = [sys.executable, "-u", "-m", f"attacker.scenario_{scenario}", "--speed", speed]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd="/app",
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"spawn failed: {e}"}), 500
+
+    with _attack_lock:
+        _attack_log.clear()
+        _attack_state.update({"running": True, "scenario": scenario, "pid": proc.pid, "proc": proc})
+
+    _attack_append(f"[launch] scenario={scenario} speed={speed} pid={proc.pid}")
+    t = threading.Thread(target=_attack_reader, args=(proc, scenario), daemon=True)
+    t.start()
+
+    return jsonify({"status": "started", "scenario": scenario, "pid": proc.pid})
+
+
+@app.route('/api/attack/status', methods=['GET'])
+def api_attack_status():
+    with _attack_lock:
+        return jsonify({
+            "running": bool(_attack_state["running"]),
+            "scenario": _attack_state["scenario"],
+            "pid": _attack_state["pid"],
+            "log_lines": list(_attack_log),
+        })
+
 
 # --- Startup ---
 

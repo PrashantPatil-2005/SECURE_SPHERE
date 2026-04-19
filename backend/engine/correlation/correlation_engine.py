@@ -143,7 +143,8 @@ class CorrelationEngine:
         self.event_buffer: list = []
         self.buffer_lock  = threading.Lock()
 
-        # Per-IP risk state
+        # Per-service (or fallback per-IP) risk state.
+        # Keys are source_service_name when available, else source_ip.
         self.risk_scores = defaultdict(lambda: {
             "score": 0,
             "events": [],
@@ -153,6 +154,8 @@ class CorrelationEngine:
             "event_count": 0,
             "last_event_type": None,
             "threat_level": "normal",
+            "entity_type": "ip",
+            "source_ip": None,
         })
 
         self.recent_incidents: list = []
@@ -222,14 +225,16 @@ class CorrelationEngine:
 
     _SEVERITY_POINTS = {"low": 10, "medium": 25, "high": 50, "critical": 100}
 
-    def update_risk_score(self, entity_ip: str, event: dict) -> None:
-        if not entity_ip:
+    def update_risk_score(self, service_key: str, event: dict,
+                           entity_type: str = "ip") -> None:
+        if not service_key:
             return
 
         severity  = event.get("severity", {}).get("level", "low")
         points    = self._SEVERITY_POINTS.get(severity, 10)
-        data      = self.risk_scores[entity_ip]
+        data      = self.risk_scores[service_key]
         layer     = event.get("source_layer")
+        src_ip    = event.get("source_entity", {}).get("ip") or event.get("source_ip")
 
         if layer:
             data["layers_involved"].add(layer)
@@ -242,6 +247,9 @@ class CorrelationEngine:
         data["last_event_type"]  = event.get("event_type")
         data["last_update"]      = datetime.now().isoformat()
         data["threat_level"]     = self._threat_level(data["score"])
+        data["entity_type"]      = entity_type
+        if src_ip:
+            data["source_ip"] = src_ip
         data["events"].append({
             "event_id":  event.get("event_id"),
             "type":      event.get("event_type"),
@@ -252,7 +260,7 @@ class CorrelationEngine:
         })
         data["events"] = data["events"][-50:]
 
-        self._publish_risk(entity_ip, data, points)
+        self._publish_risk(service_key, data, points)
 
     @staticmethod
     def _threat_level(score: int) -> str:
@@ -261,9 +269,13 @@ class CorrelationEngine:
         if score > 30:  return "suspicious"
         return "normal"
 
-    def _publish_risk(self, ip: str, data: dict, points: int) -> None:
+    def _publish_risk(self, service_key: str, data: dict, points: int) -> None:
+        entity_type = data.get("entity_type", "ip")
         payload = {
-            "entity_ip":       ip,
+            "entity":          service_key,
+            "entity_type":     entity_type,
+            "entity_ip":       data.get("source_ip") if entity_type == "service" else service_key,
+            "source_ip":       data.get("source_ip"),
             "current_score":   data["score"],
             "peak_score":      data["peak_score"],
             "threat_level":    data["threat_level"],
@@ -275,7 +287,7 @@ class CorrelationEngine:
         }
         try:
             self.redis.publish("risk_scores", json.dumps(payload))
-            self.redis.hset("risk_scores_current", ip, json.dumps(payload))
+            self.redis.hset("risk_scores_current", service_key, json.dumps(payload))
         except Exception as exc:
             logger.error("Failed to publish risk score: %s", exc)
 
@@ -287,8 +299,8 @@ class CorrelationEngine:
         }
         c = colors.get(data["threat_level"], "\033[0m")
         logger.info(
-            "%s[RISK] %s: %d (%s) | +%d pts\033[0m",
-            c, ip, data["score"], data["threat_level"], points,
+            "%s[RISK] %s (%s): %d (%s) | +%d pts\033[0m",
+            c, service_key, entity_type, data["score"], data["threat_level"], points,
         )
 
     def decay_risk_scores_loop(self) -> None:
@@ -296,21 +308,21 @@ class CorrelationEngine:
             time.sleep(RISK_DECAY_INTERVAL)
             try:
                 to_remove = []
-                for ip, data in self.risk_scores.items():
+                for key, data in self.risk_scores.items():
                     if data["score"] > 0:
                         data["score"] = max(0, data["score"] - RISK_DECAY_RATE)
                         data["threat_level"] = self._threat_level(data["score"])
-                        self._publish_risk(ip, data, -RISK_DECAY_RATE)
+                        self._publish_risk(key, data, -RISK_DECAY_RATE)
                     if data["score"] == 0:
                         last_up = (
                             datetime.fromisoformat(data["last_update"])
                             if data["last_update"] else datetime.min
                         )
                         if (datetime.now() - last_up).total_seconds() > 1800:
-                            to_remove.append(ip)
-                for ip in to_remove:
-                    del self.risk_scores[ip]
-                    self.redis.hdel("risk_scores_current", ip)
+                            to_remove.append(key)
+                for key in to_remove:
+                    del self.risk_scores[key]
+                    self.redis.hdel("risk_scores_current", key)
             except Exception as exc:
                 logger.error("Decay loop error: %s", exc)
 
@@ -348,7 +360,12 @@ class CorrelationEngine:
             times     = [datetime.fromisoformat(t.replace("Z", "")) for t in timestamps]
             time_span = (max(times) - min(times)).total_seconds()
 
-        current_risk = self.risk_scores[source_ip]["score"] if source_ip else 0
+        risk_key = next(
+            (e.get("source_service_name") for e in correlated_events
+             if e.get("source_service_name")),
+            None,
+        ) or source_ip
+        current_risk = self.risk_scores[risk_key]["score"] if risk_key in self.risk_scores else 0
 
         incident = {
             "incident_id":            str(uuid4()),
@@ -391,6 +408,10 @@ class CorrelationEngine:
             self.redis.publish("correlated_incidents", js)
             self.redis.lpush("incidents", js)
             self.redis.ltrim("incidents", 0, 99)
+            # Fast-path queue for the backend WS layer — decouples delivery
+            # from pub/sub subscriber liveness.
+            self.redis.lpush("ws_push_queue", js)
+            self.redis.ltrim("ws_push_queue", 0, 199)
         except Exception as exc:
             logger.error("Failed to publish incident: %s", exc)
 
@@ -1218,8 +1239,11 @@ class CorrelationEngine:
             ]
             buffer_copy = list(self.event_buffer)
 
-        if source_ip:
-            self.update_risk_score(source_ip, event)
+        service_name = event.get("source_service_name")
+        service_key = service_name or source_ip
+        entity_type = "service" if service_name else "ip"
+        if service_key:
+            self.update_risk_score(service_key, event, entity_type=entity_type)
 
         for rule in self.rules:
             try:
@@ -1248,8 +1272,13 @@ class CorrelationEngine:
                     types  = Counter(e.get("event_type")   for e in self.event_buffer)
 
                 risk_summary = {
-                    ip: {"score": d["score"], "level": d["threat_level"]}
-                    for ip, d in self.risk_scores.items()
+                    key: {
+                        "score":       d["score"],
+                        "level":       d["threat_level"],
+                        "entity_type": d.get("entity_type", "ip"),
+                        "source_ip":   d.get("source_ip"),
+                    }
+                    for key, d in self.risk_scores.items()
                     if d["score"] > 0
                 }
 
@@ -1287,14 +1316,32 @@ class CorrelationEngine:
 
         @app.route("/engine/stats")
         def stats():
-            return jsonify({"status": "success", "data": dict(self.stats)})
+            stats_data = dict(self.stats)
+            stats_data["risk_scores"] = {
+                key: {
+                    "score":           d["score"],
+                    "peak_score":      d["peak_score"],
+                    "threat_level":    d["threat_level"],
+                    "entity_type":     d.get("entity_type", "ip"),
+                    "source_ip":       d.get("source_ip"),
+                    "event_count":     d["event_count"],
+                    "last_event_type": d["last_event_type"],
+                    "last_update":     d["last_update"],
+                    "layers_involved": list(d["layers_involved"]),
+                }
+                for key, d in self.risk_scores.items()
+            }
+            return jsonify({"status": "success", "data": stats_data})
 
         @app.route("/engine/risk-scores")
         def risk_scores():
-            return jsonify({
-                "status": "success",
-                "data":   {k: v for k, v in self.risk_scores.items()},
-            })
+            out = {}
+            for key, d in self.risk_scores.items():
+                out[key] = {
+                    **{k: v for k, v in d.items() if k != "layers_involved"},
+                    "layers_involved": list(d["layers_involved"]),
+                }
+            return jsonify({"status": "success", "data": out})
 
         @app.route("/engine/mitre-mapping")
         def mitre_mapping():

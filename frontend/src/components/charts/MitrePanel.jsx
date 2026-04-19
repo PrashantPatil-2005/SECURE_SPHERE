@@ -55,6 +55,7 @@ export default function MitrePanel() {
     () => techniques.reduce((m, t) => Math.max(m, (t.hit_count || 0) + (t.engine_hit_count || 0)), 0),
     [techniques]
   );
+  const totalUnique = data?.total_techniques ?? data?.total_unique ?? techniques.length;
 
   return (
     <Card className="overflow-hidden border-base-800 bg-base-900 transition-colors duration-200">
@@ -64,7 +65,7 @@ export default function MitrePanel() {
           <CardTitle className="text-base-100">MITRE ATT&CK Matrix</CardTitle>
           {data && (
             <span className="ml-auto font-mono text-[10px] text-base-500">
-              {data.total_unique ?? 0} techniques · {data.total_incidents ?? 0} incidents
+              {totalUnique} techniques · {data.total_incidents ?? 0} incidents
               {data.coverage_percent != null && <> · {data.coverage_percent}% coverage</>}
             </span>
           )}
@@ -85,7 +86,8 @@ export default function MitrePanel() {
               const total = (t.hit_count || 0) + (t.engine_hit_count || 0);
               const pct = maxHits > 0 ? Math.min(100, (total / maxHits) * 100) : 0;
               const tone = tacticTone(t.technique_id) || DEFAULT_TONE;
-              const tooltip = `${t.technique_id} — ${t.name}${t.description ? `\n\n${t.description}` : ''}${total ? `\n\nHits: ${total}` : ''}`;
+              const techName = t.technique_name || t.name || '';
+              const tooltip = `${t.technique_id} — ${techName}${t.description ? `\n\n${t.description}` : ''}${total ? `\n\nHits: ${total}` : ''}`;
               return (
                 <div
                   key={t.technique_id}
@@ -99,14 +101,14 @@ export default function MitrePanel() {
                     <span className="font-mono text-[11px] font-semibold">{t.technique_id}</span>
                     <span className="font-mono text-[10px] opacity-70">{total}</span>
                   </div>
-                  <div className="mt-0.5 truncate text-[10px] opacity-90">{t.name}</div>
+                  <div className="mt-0.5 truncate text-[10px] opacity-90">{techName}</div>
                   <div className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-base-950/50">
                     <div className="h-full rounded-full bg-current opacity-60" style={{ width: `${pct}%` }} />
                   </div>
                   <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 hidden w-56 -translate-x-1/2 group-hover:block">
                     <div className="rounded border border-base-800 bg-base-950 p-2 text-[10px] leading-snug text-base-200 shadow-lg">
                       <div className="font-mono font-semibold text-base-100">
-                        {t.technique_id} · {t.name}
+                        {t.technique_id} · {techName}
                       </div>
                       {t.description && <div className="mt-1 text-base-400">{t.description}</div>}
                       {total > 0 && (

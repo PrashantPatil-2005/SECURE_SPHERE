@@ -66,6 +66,16 @@ export const api = {
       body: JSON.stringify({ scenario }),
     }).then(r => r.json()),
 
+  runAttack: (scenario, speed = 'demo') =>
+    fetch(`${BASE}/api/attack/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenario, speed }),
+    }).then(r => r.json()),
+
+  getAttackStatus: () =>
+    fetch(`${BASE}/api/attack/status`).then(r => r.json()),
+
   clearEvents: () =>
     fetch(`${BASE}/api/events/clear`, { method: 'POST' }).then(r => r.json()),
 
