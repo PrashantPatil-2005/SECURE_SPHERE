@@ -8,57 +8,91 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
-const FALLBACK_CONTAINERS = [
-  'api-gateway', 'frontend', 'database', 'topology-collector'
-];
-
 export default function System({ systemStatus = {}, onRefresh }) {
   const [webhook, setWebhook] = useState('');
+
+  const services = [];
+  if (systemStatus?.redis) {
+    services.push({
+      name: 'redis-cache',
+      status: systemStatus.redis.connected ? 'running' : 'stopped',
+      detail: systemStatus.redis.ping,
+    });
+  }
+  if (systemStatus?.correlation_engine) {
+    services.push({
+      name: 'correlation-engine',
+      status: systemStatus.correlation_engine.active ? 'running' : 'stopped',
+      incidents: systemStatus.correlation_engine.incidents,
+      error: systemStatus.correlation_engine.error,
+    });
+  }
+  if (systemStatus?.monitors) {
+    for (const [k, v] of Object.entries(systemStatus.monitors)) {
+      services.push({
+        name: `${k}-monitor`,
+        status: v.active ? 'running' : 'idle',
+        event_count: v.event_count,
+        last_event: v.last_event,
+      });
+    }
+  }
 
   return (
     <motion.div {...anim} className="flex flex-col gap-4">
       <h2 className="text-lg font-bold text-base-100 tracking-tight">System Status</h2>
 
-      {/* Container health grid */}
-      <div className="grid grid-cols-4 gap-3">
-        {(() => {
-          const list = [];
-          if(systemStatus?.redis) list.push({ name: 'redis-cache', ...systemStatus.redis, status: systemStatus.redis.connected ? 'running' : 'stopped' });
-          if(systemStatus?.correlation_engine) list.push({ name: 'correlation-engine', ...systemStatus.correlation_engine, status: systemStatus.correlation_engine.active ? 'running' : 'stopped' });
-          if(systemStatus?.monitors) {
-            for(const [k, v] of Object.entries(systemStatus.monitors)) {
-              list.push({ name: `${k}-monitor`, ...v, status: v.active ? 'running' : 'stopped' });
-            }
-          }
-          for(const name of FALLBACK_CONTAINERS) {
-            list.push({ name, status: 'healthy' });
-          }
-          return list.map((svc, i) => {
-            const isUp = svc.status === 'running' || svc.status === 'active' || svc.status === 'healthy';
-            return (
-              <Card key={svc.name + i} className="overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Server className={cn('h-4 w-4', isUp ? 'text-base-400' : 'text-base-600')} />
-                      <span className="text-xs font-semibold text-base-200 truncate">{svc.name}</span>
-                    </div>
-                    <Badge variant={isUp ? 'low' : 'medium'}>
-                      {isUp ? 'Running' : svc.status || 'Stopped'}
-                    </Badge>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+        {services.map((svc, i) => {
+          const isRunning = svc.status === 'running';
+          const isIdle = svc.status === 'idle';
+          const variant = isRunning ? 'resolved' : isIdle ? 'investigating' : 'critical';
+          const dotColor = isRunning ? '#10b981' : isIdle ? '#eab308' : '#ef4444';
+          const label = isRunning ? 'Running' : isIdle ? 'Idle' : 'Stopped';
+          return (
+            <Card key={svc.name + i} className="overflow-hidden">
+              <CardContent className="p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="relative inline-flex h-2 w-2 shrink-0">
+                      {isRunning && (
+                        <span className="absolute inset-0 animate-ping rounded-full opacity-70"
+                              style={{ backgroundColor: dotColor }} />
+                      )}
+                      <span className="relative inline-flex h-2 w-2 rounded-full"
+                            style={{ backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}aa` }} />
+                    </span>
+                    <Server className={cn('h-4 w-4 shrink-0', isRunning ? 'text-base-300' : 'text-base-500')} />
+                    <span className="truncate text-xs font-semibold text-base-200">{svc.name}</span>
                   </div>
-                  {(svc.uptime || systemStatus?.uptime_seconds) && (
-                    <span className="text-[10px] font-mono text-base-500">Up: {svc.uptime || `${systemStatus.uptime_seconds}s`}</span>
-                  )}
+                  <Badge variant={variant}>{label}</Badge>
+                </div>
+                <div className="space-y-0.5 font-mono text-[10px] text-base-500">
                   {svc.event_count !== undefined && (
-                    <span className="text-[10px] font-mono text-base-500 ml-2">events: {svc.event_count}</span>
+                    <div>events: <span className="tabular-nums text-base-300">{svc.event_count}</span></div>
                   )}
-                </CardContent>
-              </Card>
-            );
-          });
-        })()}
+                  {svc.incidents !== undefined && (
+                    <div>incidents: <span className="tabular-nums text-base-300">{svc.incidents}</span></div>
+                  )}
+                  {svc.error && <div className="truncate text-red-400" title={svc.error}>err: {svc.error}</div>}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {services.length === 0 && (
+          <div className="col-span-full rounded-lg border border-dashed border-base-800 bg-base-950/40 p-6 text-center text-xs text-base-500">
+            No status data. Check API connection.
+          </div>
+        )}
       </div>
+
+      {systemStatus?.uptime_seconds !== undefined && (
+        <div className="text-[10px] font-mono text-base-500">
+          API uptime: <span className="text-base-300">{systemStatus.uptime_seconds}s</span>
+          {' · '}total events: <span className="text-base-300">{systemStatus.total_events ?? 0}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4">
         {/* Configuration */}

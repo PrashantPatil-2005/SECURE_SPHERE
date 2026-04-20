@@ -172,7 +172,7 @@ export default function CommandPalette({
             autoComplete="off"
             spellCheck={false}
           />
-          <kbd className="hidden rounded border border-base-800 px-2 py-0.5 text-[10px] text-base-500 sm:inline">
+          <kbd className="hidden items-center rounded border border-base-700 bg-base-800/80 px-2 py-0.5 font-mono text-[10px] font-medium text-base-400 shadow-sm sm:inline-flex">
             ESC
           </kbd>
         </div>

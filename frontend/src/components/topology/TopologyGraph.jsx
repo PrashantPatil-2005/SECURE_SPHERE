@@ -50,11 +50,11 @@ export default function TopologyGraph({
     const linkMap = linksByKeyRef.current;
     linkMap.forEach((sel) => {
       sel.interrupt()
-        .attr('stroke', 'rgba(255,255,255,0.08)')
-        .attr('stroke-width', 1)
+        .attr('stroke', '#a855f7')
+        .attr('stroke-width', 1.5)
         .attr('stroke-dasharray', null)
         .attr('stroke-dashoffset', null)
-        .attr('opacity', 1);
+        .attr('opacity', 0.7);
     });
 
     const nodeMap = nodesByIdRef.current;
@@ -169,6 +169,14 @@ export default function TopologyGraph({
     linksByKeyRef.current = new Map();
     nodesByIdRef.current = new Map();
 
+    // Defs: glow filter for nodes (edges use solid violet accent)
+    const defs = svg.append('defs');
+    const nodeGlow = defs.append('filter').attr('id', 'nodeGlow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+    nodeGlow.append('feGaussianBlur').attr('stdDeviation', '2.5').attr('result', 'blur');
+    const merge = nodeGlow.append('feMerge');
+    merge.append('feMergeNode').attr('in', 'blur');
+    merge.append('feMergeNode').attr('in', 'SourceGraphic');
+
     const g = svg.append('g');
 
     const zoom = d3.zoom().scaleExtent([0.3, 3]).on('zoom', (e) => g.attr('transform', e.transform));
@@ -204,9 +212,10 @@ export default function TopologyGraph({
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('stroke', 'rgba(255,255,255,0.08)')
-      .attr('stroke-width', 1)
-      .attr('opacity', 1);
+      .attr('stroke', '#a855f7')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-linecap', 'round')
+      .attr('opacity', 0.7);
 
     linkSelectionRef.current = link;
     link.each(function (d) {
@@ -216,7 +225,7 @@ export default function TopologyGraph({
     const setLinkHighlight = (nodeId) => {
       if (!linkSelectionRef.current) return;
       linkSelectionRef.current.attr('opacity', (d) => {
-        if (!nodeId) return 1;
+        if (!nodeId) return 0.7;
         const s = d.source.id ?? d.source;
         const t = d.target.id ?? d.target;
         return s === nodeId || t === nodeId ? 1 : 0.12;
@@ -274,9 +283,16 @@ export default function TopologyGraph({
       .append('circle')
       .attr('class', 'main-node')
       .attr('r', 16)
-      .attr('fill', '#0d1117')
+      .attr('fill', (d) => {
+        const c = threatLevelColor(d.level);
+        return `color-mix(in srgb, ${c} 14%, #0d1117)`;
+      })
       .attr('stroke', (d) => threatLevelColor(d.level))
       .attr('stroke-width', (d) => (selectedNodeId === d.id ? 3 : 2))
+      .style('filter', (d) => {
+        const c = threatLevelColor(d.level);
+        return `drop-shadow(0 0 6px ${c}80)`;
+      })
       .style('cursor', 'pointer')
       .on('mouseenter', (e, d) => {
         e.stopPropagation();
@@ -423,16 +439,40 @@ export default function TopologyGraph({
 
       {/* Attack path legend (bottom-left) */}
       {showLegend && (
-        <div className="absolute bottom-2 left-2 z-20 inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-red-500/30 bg-red-500/10 backdrop-blur-sm">
-          <span className="inline-flex h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+        <div className="absolute bottom-2 left-2 z-20 inline-flex items-center gap-2.5 px-3 py-1.5 rounded-md border border-red-500/40 bg-red-500/10 backdrop-blur-md animate-fade-in shadow-[0_0_20px_-4px_rgba(239,68,68,0.4)]">
+          <span className="relative inline-flex h-2 w-2">
+            <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+          </span>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-red-300">
             Attack Path
           </span>
-          <span className="text-[10px] font-mono text-red-300/70">
-            {attackPath.length} hops
+          <span className="h-3 w-px bg-red-500/40" />
+          <span className="text-[10px] font-mono tabular-nums text-red-300/80">
+            {attackPath.length} hop{attackPath.length === 1 ? '' : 's'}
           </span>
         </div>
       )}
+
+      {/* Always-on color key (bottom-right) */}
+      <div className="absolute bottom-2 right-2 z-10 flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-base-800 bg-base-950/70 backdrop-blur-md">
+        {[
+          { label: 'Normal',      c: '#10b981' },
+          { label: 'Suspicious',  c: '#eab308' },
+          { label: 'Threatening', c: '#f97316' },
+          { label: 'Critical',    c: '#ef4444' },
+        ].map((t) => (
+          <span key={t.label} className="flex items-center gap-1" title={t.label}>
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: t.c, boxShadow: `0 0 6px ${t.c}88` }}
+            />
+            <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: t.c }}>
+              {t.label.slice(0, 4)}
+            </span>
+          </span>
+        ))}
+      </div>
 
       {tooltip && (
         <div

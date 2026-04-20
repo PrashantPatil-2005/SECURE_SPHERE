@@ -192,10 +192,13 @@ export default function TopNav({
         {/* Command */}
         <button
           onClick={onOpenCommandPalette}
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-base-500 transition hover:bg-base-800 hover:text-base-200"
+          className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-base-500 transition hover:bg-base-800 hover:text-base-200"
         >
-          <Command className="h-4 w-4" />
-          <span className="hidden sm:inline">⌘K</span>
+          <Command className="h-4 w-4 transition-colors group-hover:text-accent" />
+          <kbd className="hidden items-center gap-0.5 rounded border border-base-700 bg-base-800/50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-base-300 shadow-sm transition-colors group-hover:border-accent/40 group-hover:text-base-100 sm:inline-flex">
+            <span className="text-[11px] opacity-70"></span>
+            <span></span>
+          </kbd>
         </button>
 
         {/* Status */}

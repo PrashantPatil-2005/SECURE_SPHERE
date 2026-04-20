@@ -58,8 +58,11 @@ export function severityColor(severity) {
     case 'critical':
       return '#ef4444';
     case 'high':
+      return '#f97316';
     case 'medium':
+      return '#eab308';
     case 'low':
+      return '#22d3ee';
     default:
       return 'var(--base-500)';
   }
@@ -68,13 +71,13 @@ export function severityColor(severity) {
 export function severityClass(severity) {
   switch (getSeverityString(severity)) {
     case 'critical':
-      return 'text-severity-critical bg-red-500/10 border-red-500/25';
+      return 'text-red-400 bg-red-500/10 border-red-500/30';
     case 'high':
-      return 'text-base-200 bg-base-800/40 border-base-700';
+      return 'text-orange-400 bg-orange-500/10 border-orange-500/30';
     case 'medium':
-      return 'text-base-300 bg-base-800/30 border-base-700';
+      return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
     case 'low':
-      return 'text-base-400 bg-base-800/20 border-base-800';
+      return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';
     default:
       return 'text-base-500 bg-base-900/50 border-base-800';
   }
@@ -85,26 +88,26 @@ export function threatLevelColor(level) {
     case 'critical':
       return '#ef4444';
     case 'threatening':
-      return 'var(--base-400)';
+      return '#f97316';
     case 'suspicious':
-      return 'var(--base-500)';
+      return '#eab308';
     case 'normal':
-      return 'var(--base-600)';
+      return '#10b981';
     default:
-      return 'var(--base-600)';
+      return '#64748b';
   }
 }
 
 export function layerColor(layer) {
   switch (layer?.toLowerCase()) {
     case 'network':
-      return 'var(--base-400)';
+      return '#22d3ee';
     case 'api':
-      return 'var(--base-500)';
+      return '#a855f7';
     case 'auth':
-      return 'var(--base-300)';
+      return '#f59e0b';
     case 'browser':
-      return 'var(--base-500)';
+      return '#34d399';
     default:
       return 'var(--base-500)';
   }

@@ -43,7 +43,10 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
           onClick={onOpenPalette}
           className="hidden min-w-0 flex-1 items-center gap-2 rounded border border-dashed border-base-800 bg-base-950/60 px-3 py-1.5 text-left font-mono text-[11px] text-base-500 transition-colors duration-200 hover:border-accent/25 hover:text-base-400 sm:flex"
         >
-          <span className="text-base-600">⌘K</span>
+          <kbd className="flex items-center gap-0.5 rounded border border-base-700 bg-base-800/80 px-1.5 py-0.5 font-mono text-[10px] font-medium text-base-300 shadow-sm transition-colors group-hover:border-accent/40 group-hover:text-base-100">
+            <span className="text-[11px] opacity-70">⌘</span>
+            <span>K</span>
+          </kbd>
           <span className="truncate">Command palette — navigate, filter, act</span>
         </button>
       )}
@@ -53,10 +56,13 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
       <button
         type="button"
         onClick={onOpenPalette}
-        className="shrink-0 rounded border border-base-800 bg-base-950/50 px-2 py-1 font-mono text-[10px] text-base-500 transition-colors duration-200 hover:border-accent/30 hover:text-base-400"
+        className="group flex h-8 shrink-0 items-center justify-center rounded-md border border-base-800 bg-base-950/50 px-2 transition-all duration-200 hover:border-accent/30 hover:bg-base-900"
         title="Command palette"
       >
-        ⌘K
+        <kbd className="flex items-center gap-0.5 font-mono text-[10px] font-medium text-base-500 transition-colors group-hover:text-base-200">
+          <span className="text-[11px] opacity-70">⌘</span>
+          <span>K</span>
+        </kbd>
       </button>
 
       <div className={cn('flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase', staleness)}>
@@ -154,9 +160,13 @@ export default function DashboardLayout({
                 <button
                   type="button"
                   onClick={openPalette}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded border border-dashed border-base-800 bg-base-950/60 px-2 py-2 text-left font-mono text-[11px] text-base-500 transition-colors duration-200"
+                  className="group flex min-w-0 flex-1 items-center justify-between rounded-md border border-dashed border-base-800 bg-base-950/60 px-3 py-2 transition-colors duration-200 hover:border-accent/25"
                 >
-                  ⌘K Commands
+                  <span className="font-mono text-[11px] text-base-500 group-hover:text-base-300">Commands</span>
+                  <kbd className="flex items-center gap-0.5 rounded border border-base-700 bg-base-800/80 px-1.5 py-0.5 font-mono text-[10px] font-medium text-base-400 shadow-sm transition-colors group-hover:border-accent/40 group-hover:text-base-100">
+                    <span className="text-[11px] opacity-70">⌘</span>
+                    <span>K</span>
+                  </kbd>
                 </button>
               </div>
             )}

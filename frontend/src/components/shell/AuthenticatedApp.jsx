@@ -173,11 +173,13 @@ export default function AuthenticatedApp() {
         toolbar={
           <Header
             incidentCount={incidents.length}
+            incidents={incidents}
             theme={theme}
             onToggleTheme={toggleTheme}
             onRefresh={refetch}
             onClear={handleClear}
             onProfileClick={() => navigate('/system')}
+            onNavigate={navigate}
           />
         }
         statusBar={

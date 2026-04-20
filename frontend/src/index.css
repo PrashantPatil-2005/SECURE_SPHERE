@@ -56,19 +56,33 @@ body {
   overflow-y: scroll;
 }
 
+/* Scrollbar — thin, subtle, fades in on hover over its container */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--base-500) 35%, transparent);
-  border-radius: 3px;
+  background-color: color-mix(in srgb, var(--base-500) 22%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 220ms ease;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--base-500) 55%, transparent);
+  background-color: color-mix(in srgb, var(--base-400) 55%, transparent);
+}
+::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--base-500) 30%, transparent) transparent;
 }
 
 ::selection {
@@ -199,7 +213,89 @@ header:where([class*="border-b"]) {
   box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-/* Topology graph edges — subtle drop to lift path lines off the canvas. */
+/* Topology graph edges — violet glow lifts path lines off the canvas. */
 .topology-links line {
-  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 0 3px rgba(168, 85, 247, 0.55));
+  transition: stroke-width 180ms ease, opacity 180ms ease;
+}
+.topology-links line:hover {
+  opacity: 1 !important;
+  stroke-width: 2.5 !important;
+}
+
+/* ── Global micro-animations ─────────────────────────────────────────── */
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes floatSoft {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, var(--base-300) 0%, var(--base-100) 25%, var(--base-300) 50%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+.float-soft { animation: floatSoft 3s ease-in-out infinite; }
+
+.animated-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+
+/* Smooth focus ring for inputs/buttons */
+:where(input, textarea, select, button):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent),
+              0 0 14px -2px color-mix(in srgb, var(--accent) 30%, transparent);
+  transition: box-shadow 160ms ease;
+}
+
+/* Severity dot pulse — colored by CSS var --dot-color */
+@keyframes dotPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--dot-color, rgba(239,68,68,0.6)); }
+  70%      { box-shadow: 0 0 0 8px transparent; }
+}
+.dot-pulse { animation: dotPulse 1.8s ease-out infinite; }
+
+/* Row hover lift */
+tr.row-lift, .row-lift {
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+tr.row-lift:hover, .row-lift:hover {
+  background-color: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+/* Card shine on hover (uses ::after overlay) */
+.shine-on-hover { position: relative; overflow: hidden; }
+.shine-on-hover::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%);
+  transform: translateX(-100%);
+  transition: transform 700ms ease;
+  pointer-events: none;
+}
+.shine-on-hover:hover::after { transform: translateX(100%); }
+
+/* Reduce motion respect */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -605,23 +605,51 @@ def system_status():
         "total_events": 0,
         "uptime_seconds": (datetime.utcnow() - SERVER_START_TIME).seconds
     }
-    
+
     if redis_available:
         status["redis"]["ping"] = "PONG"
-        
-        # Check monitors
-        monitors = ["network", "api", "auth"]
+
+        # Per-monitor liveness: count + latest-event freshness (<=120s => active)
+        monitors = ["network", "api", "auth", "browser"]
+        now_ts = datetime.utcnow()
         for m in monitors:
-            last = (get_events_from_redis(f"events:{m}", 0, 1) or [{}])[0]
+            last_list = get_events_from_redis(f"events:{m}", 0, 1) or []
+            last = last_list[0] if last_list else {}
+            last_ts_raw = last.get('timestamp') if isinstance(last, dict) else None
+            fresh = False
+            if last_ts_raw:
+                try:
+                    s = str(last_ts_raw)
+                    dt = datetime.fromisoformat(s.replace('Z', '+00:00')) if ('Z' in s or '+' in s[10:]) else datetime.fromisoformat(s)
+                    age = (now_ts - dt.replace(tzinfo=None)).total_seconds()
+                    fresh = age <= 120
+                except Exception:
+                    fresh = False
+            count = redis_client.llen(f"events:{m}")
             status["monitors"][m] = {
-                "active": last is not None,
-                "last_event": last.get('timestamp'),
-                "event_count": redis_client.llen(f"events:{m}")
+                "active": bool(fresh or count > 0),
+                "last_event": last_ts_raw,
+                "event_count": count,
             }
-            status["total_events"] += status["monitors"][m]["event_count"]
-            
+            status["total_events"] += count
+
         status["correlation_engine"]["incidents"] = redis_client.llen("incidents")
-        
+
+    # Ping correlation engine /health (container DNS name)
+    try:
+        engine_url = os.getenv("SECURISPHERE_ENGINE_URL", "http://correlation-engine:5070")
+        r = requests.get(f"{engine_url}/engine/health", timeout=1.5)
+        if r.ok:
+            body = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+            status["correlation_engine"]["active"] = True
+            status["correlation_engine"]["uptime"] = body.get("uptime") or body.get("uptime_seconds")
+        else:
+            status["correlation_engine"]["active"] = False
+            status["correlation_engine"]["error"] = f"HTTP {r.status_code}"
+    except Exception as e:
+        status["correlation_engine"]["active"] = False
+        status["correlation_engine"]["error"] = str(e)[:120]
+
     return jsonify({"status": "success", "data": status})
 
 # ============================================================

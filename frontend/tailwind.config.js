@@ -48,6 +48,10 @@ export default {
         'fade-in': 'fadeIn 200ms ease-out',
         'slide-up': 'slideUp 250ms ease-out',
         'flash-row': 'flashRow 1.4s ease-out',
+        'float-soft': 'floatSoft 3s ease-in-out infinite',
+        'gradient-shift': 'gradientShift 8s ease infinite',
+        'scale-in': 'scaleIn 220ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'glow-ring': 'glowRing 2.4s ease-in-out infinite',
       },
       keyframes: {
         pulseGlow: {
@@ -65,6 +69,30 @@ export default {
         flashRow: {
           '0%': { backgroundColor: 'rgba(255,255,255,0.06)' },
           '100%': { backgroundColor: 'transparent' },
+        },
+        floatSoft: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-3px)' },
+        },
+        gradientShift: {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+        },
+        scaleIn: {
+          from: { opacity: '0', transform: 'scale(0.92)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
+        glowRing: {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(168,85,247,0.0)' },
+          '50%': { boxShadow: '0 0 0 6px rgba(168,85,247,0.18)' },
+        },
+        wiggle: {
+          '0%, 100%': { transform: 'rotate(0)' },
+          '15%': { transform: 'rotate(-12deg)' },
+          '30%': { transform: 'rotate(10deg)' },
+          '45%': { transform: 'rotate(-8deg)' },
+          '60%': { transform: 'rotate(6deg)' },
+          '75%': { transform: 'rotate(-3deg)' },
         },
       },
     },
