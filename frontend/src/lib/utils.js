@@ -18,19 +18,34 @@ export function getSeverityString(severity) {
   return (severity.level || 'default').toLowerCase();
 }
 
+// Backend emits `datetime.utcnow().isoformat()` (naive — no "Z"). Browser
+// parses naive ISO as LOCAL, producing a UTC-offset skew (e.g. IST viewers
+// saw fresh incidents as "5h ago"). Treat any naive ISO as UTC.
+function parseServerTime(iso) {
+  if (!iso) return null;
+  const s = String(iso);
+  // Already has timezone (Z or ±HH:MM) — parse as-is.
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s);
+  return new Date(s + 'Z');
+}
+
 export function formatTimestamp(iso) {
   if (!iso) return '\u2014';
-  return new Date(iso).toLocaleTimeString();
+  const d = parseServerTime(iso);
+  return d ? d.toLocaleTimeString() : '\u2014';
 }
 
 export function formatTimestampFull(iso) {
   if (!iso) return '\u2014';
-  return new Date(iso).toLocaleString();
+  const d = parseServerTime(iso);
+  return d ? d.toLocaleString() : '\u2014';
 }
 
 export function relativeTime(iso) {
   if (!iso) return '';
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  const d = parseServerTime(iso);
+  if (!d) return '';
+  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
   if (diff < 0) return 'just now';
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;

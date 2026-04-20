@@ -133,8 +133,12 @@ export function useRealtime() {
     fetchAll();
     fetchIncidents();
 
-    // Periodic refresh for polled feeds (not incidents — WS handles those).
-    const refreshId = setInterval(fetchAll, 15000);
+    // Periodic refresh for polled feeds. Incidents polled too (every 15s) as a
+    // safety net — WS push is primary but this catches missed pushes.
+    const refreshId = setInterval(() => {
+      fetchAll();
+      fetchIncidents();
+    }, 15000);
 
     return () => {
       clearInterval(refreshId);

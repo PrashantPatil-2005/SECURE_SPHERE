@@ -20,7 +20,43 @@ import { useAppStore } from '@/stores/useAppStore';
 
 const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
-const DEFAULT_STATUS = 'active';
+const DEFAULT_STATUS = 'open';
+
+// Normalize server/legacy status values into the triage filter buckets.
+function normaliseStatus(s) {
+  const v = safeString(s).toLowerCase();
+  if (!v || v === 'active') return 'open';
+  if (v === 'investigating') return 'acknowledged';
+  return v;
+}
+
+const STATUS_FILTERS = [
+  { key: 'all',          label: 'All' },
+  { key: 'open',         label: 'Open' },
+  { key: 'acknowledged', label: 'Acknowledged' },
+  { key: 'resolved',     label: 'Resolved' },
+];
+
+const STATUS_BADGE_CLASS = {
+  open:         'bg-base-800/50 text-base-300 border-base-700',
+  acknowledged: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/25',
+  resolved:     'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+  escalated:    'bg-red-500/15 text-red-300 border-red-500/30',
+  suppressed:   'bg-base-800/50 text-base-400 border-base-700',
+};
+
+function StatusBadge({ status }) {
+  const norm = normaliseStatus(status);
+  const cls = STATUS_BADGE_CLASS[norm] || STATUS_BADGE_CLASS.open;
+  return (
+    <span className={cn(
+      'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border',
+      cls,
+    )}>
+      {norm}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // IncidentCard — one row per incident, with expandable drill-down.
@@ -78,7 +114,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
               {safeString(inc.scenario_label || inc.title || inc.incident_type)}
             </h3>
             <Badge variant={sev}>{sev}</Badge>
-            <Badge variant={status}>{status}</Badge>
+            <StatusBadge status={status} />
             {mttd != null && (
               <span className="text-[10px] font-mono font-semibold text-severity-low px-2 py-0.5 rounded bg-severity-low/10 border border-severity-low/20">
                 MTTD: {Math.round(mttd)}s
@@ -364,7 +400,7 @@ export default function Incidents({ incidents, onReplayRequest }) {
 
   const filtered = useMemo(() => {
     return augmentedIncidents.filter(inc => {
-      const st = safeString(inc.status) || DEFAULT_STATUS;
+      const st = normaliseStatus(inc.status);
       if (statusFilter !== 'all' && st !== statusFilter) return false;
       if (sevFilter !== 'all' && getSeverityString(inc.severity) !== sevFilter) return false;
       return true;
@@ -398,14 +434,29 @@ export default function Incidents({ incidents, onReplayRequest }) {
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </Select>
-          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="acknowledged">Acknowledged</option>
-            <option value="escalated">Escalated</option>
-            <option value="suppressed">Suppressed</option>
-          </Select>
         </div>
+      </div>
+
+      {/* Status filter button row */}
+      <div className="inline-flex items-center gap-1 p-1 rounded-lg border border-base-800 bg-base-900/40 self-start">
+        {STATUS_FILTERS.map(f => {
+          const active = statusFilter === f.key;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setStatusFilter(f.key)}
+              className={cn(
+                'h-7 px-3 rounded-md text-[11px] font-semibold uppercase tracking-wider transition-colors',
+                active
+                  ? 'bg-accent/15 text-accent border border-accent/30'
+                  : 'text-base-400 hover:text-base-200 hover:bg-base-800/40 border border-transparent',
+              )}
+            >
+              {f.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Incident cards */}

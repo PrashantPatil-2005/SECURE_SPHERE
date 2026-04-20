@@ -1,4 +1,5 @@
 import EventsAreaChart from '@/components/charts/EventsAreaChart';
+import AlertReductionCard from './AlertReductionCard';
 import ChartCard from './ChartCard';
 import IncidentList from './IncidentList';
 import KPIBar from './KPIBar';
@@ -11,6 +12,7 @@ export default function TriageDashboard({
   events,
   incidents,
   timeline,
+  metrics = {},
   topology = { nodes: [], edges: [] },
   riskScores = {},
   selectedId,
@@ -19,6 +21,7 @@ export default function TriageDashboard({
   return (
     <div className="space-y-4">
       <KPIBar items={kpiItems} />
+      <AlertReductionCard metrics={metrics} />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-7">

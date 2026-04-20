@@ -1,6 +1,7 @@
 import EventsAreaChart from '@/components/charts/EventsAreaChart';
 import ThreatDonutChart from '@/components/charts/ThreatDonutChart';
 import TopServicesBar from '@/components/charts/TopServicesBar';
+import AlertReductionCard from './AlertReductionCard';
 import ChartCard from './ChartCard';
 import IncidentList from './IncidentList';
 import KPIBar from './KPIBar';
@@ -17,6 +18,7 @@ export default function GridDashboard({
   events,
   incidents,
   timeline,
+  metrics = {},
   riskScores,
   topology = { nodes: [], edges: [] },
   selectedId,
@@ -25,6 +27,7 @@ export default function GridDashboard({
   return (
     <div className="space-y-4">
       <KPIBar items={kpiItems} columnsClassName="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" />
+      <AlertReductionCard metrics={metrics} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ChartCard

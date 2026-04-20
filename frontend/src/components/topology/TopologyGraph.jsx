@@ -1,6 +1,11 @@
-import { useRef, useEffect, useState, useLayoutEffect } from 'react';
+import { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react';
 import * as d3 from 'd3';
+import { Play, Square } from 'lucide-react';
 import { threatLevelColor } from '@/lib/utils';
+
+const ATTACK_RED = '#ef4444';
+const STEP_MS = 800;
+const EDGE_DRAW_MS = 600;
 
 function linkKey(d) {
   const s = d.source?.id ?? d.source;
@@ -9,8 +14,9 @@ function linkKey(d) {
 }
 
 /**
- * Variant A — D3 force-directed graph (preserves existing simulation, zoom, attack path).
- * Selection + hover edge emphasis via D3 (no sim restart on hover).
+ * Variant A — D3 force-directed graph with kill-chain replay animation.
+ * When `attackPath` transitions from empty to non-empty, the graph auto-plays
+ * the attack step-by-step: highlight node, draw animated red edge, next node.
  */
 export default function TopologyGraph({
   topology = { nodes: [], edges: [] },
@@ -24,10 +30,133 @@ export default function TopologyGraph({
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const linkSelectionRef = useRef(null);
+  const nodesByIdRef = useRef(new Map());     // id -> { group, mainCircle, ring, enriched }
+  const linksByKeyRef = useRef(new Map());    // "s->t" -> line selection
   const onNodeSelectRef = useRef(onNodeSelect);
   onNodeSelectRef.current = onNodeSelect;
-  const [tooltip, setTooltip] = useState(null);
 
+  // Animation state isolated in a ref so scheduled steps don't cause re-renders.
+  const animRef = useRef({ timeouts: [], step: 0, active: false });
+
+  const [tooltip, setTooltip] = useState(null);
+  const [playing, setPlaying] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+
+  const hasPath = Array.isArray(attackPath) && attackPath.length > 0;
+  const pathKey = hasPath ? attackPath.join('>') : '';
+
+  // Reset every highlighted node/edge back to baseline.
+  const resetVisuals = useCallback(() => {
+    const linkMap = linksByKeyRef.current;
+    linkMap.forEach((sel) => {
+      sel.interrupt()
+        .attr('stroke', 'rgba(255,255,255,0.08)')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', null)
+        .attr('stroke-dashoffset', null)
+        .attr('opacity', 1);
+    });
+
+    const nodeMap = nodesByIdRef.current;
+    nodeMap.forEach(({ mainCircle, ring, level }) => {
+      if (!mainCircle) return;
+      mainCircle.interrupt()
+        .attr('stroke', threatLevelColor(level))
+        .attr('stroke-width', 2)
+        .classed('attack-node-pulse', false);
+      if (ring) ring.style('opacity', 0);
+    });
+  }, []);
+
+  const clearTimeouts = useCallback(() => {
+    animRef.current.timeouts.forEach(clearTimeout);
+    animRef.current.timeouts = [];
+  }, []);
+
+  const highlightNode = useCallback((nodeId) => {
+    const entry = nodesByIdRef.current.get(nodeId);
+    if (!entry) return;
+    entry.mainCircle
+      .interrupt()
+      .attr('stroke', ATTACK_RED)
+      .attr('stroke-width', 3)
+      .classed('attack-node-pulse', true);
+    if (entry.ring) {
+      entry.ring
+        .attr('stroke', ATTACK_RED)
+        .style('opacity', 1)
+        .classed('attack-ring-pulse', true);
+    }
+  }, []);
+
+  const animateEdge = useCallback((fromId, toId) => {
+    const sel = linksByKeyRef.current.get(`${fromId}->${toId}`)
+      || linksByKeyRef.current.get(`${toId}->${fromId}`);
+    if (!sel) return;
+    const dashLen = 10;
+    sel.interrupt()
+      .attr('stroke', ATTACK_RED)
+      .attr('stroke-width', 2.5)
+      .attr('stroke-dasharray', `${dashLen} ${dashLen}`)
+      .attr('stroke-dashoffset', dashLen * 8)
+      .transition()
+      .duration(EDGE_DRAW_MS)
+      .ease(d3.easeLinear)
+      .attr('stroke-dashoffset', 0)
+      .on('end', function flow() {
+        d3.select(this)
+          .attr('stroke-dashoffset', dashLen * 2)
+          .transition()
+          .duration(1000)
+          .ease(d3.easeLinear)
+          .attr('stroke-dashoffset', 0)
+          .on('end', flow);
+      });
+  }, []);
+
+  const stopReplay = useCallback(() => {
+    clearTimeouts();
+    animRef.current.active = false;
+    animRef.current.step = 0;
+    resetVisuals();
+    setPlaying(false);
+    setShowLegend(false);
+  }, [clearTimeouts, resetVisuals]);
+
+  const playReplay = useCallback(() => {
+    if (!hasPath) return;
+    clearTimeouts();
+    resetVisuals();
+    animRef.current.active = true;
+    animRef.current.step = 0;
+    setPlaying(true);
+    setShowLegend(false);
+
+    const sched = (delay, fn) => {
+      const id = setTimeout(fn, delay);
+      animRef.current.timeouts.push(id);
+    };
+
+    // Step 1+: for hop i, at delay = (i*2+1)*STEP_MS highlight node[i];
+    // then at (i*2+2)*STEP_MS animate edge[i-1 → i] (i>=1).
+    attackPath.forEach((nodeId, i) => {
+      const nodeDelay = (i * 2 + 1) * STEP_MS;
+      sched(nodeDelay, () => highlightNode(nodeId));
+      if (i > 0) {
+        const edgeDelay = (i * 2) * STEP_MS;
+        sched(edgeDelay, () => animateEdge(attackPath[i - 1], nodeId));
+      }
+    });
+
+    const finalDelay = (attackPath.length * 2 + 1) * STEP_MS;
+    sched(finalDelay, () => {
+      animRef.current.active = false;
+      setPlaying(false);
+      setShowLegend(true);
+    });
+  }, [attackPath, hasPath, clearTimeouts, resetVisuals, highlightNode, animateEdge]);
+
+  // Build / rebuild the D3 graph.
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return;
     const { nodes, edges } = topology;
@@ -37,6 +166,8 @@ export default function TopologyGraph({
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
     linkSelectionRef.current = null;
+    linksByKeyRef.current = new Map();
+    nodesByIdRef.current = new Map();
 
     const g = svg.append('g');
 
@@ -51,9 +182,7 @@ export default function TopologyGraph({
     }));
 
     const nodeMap = {};
-    enriched.forEach((n) => {
-      nodeMap[n.id] = n;
-    });
+    enriched.forEach((n) => { nodeMap[n.id] = n; });
 
     const links = edges
       .filter((e) => nodeMap[e.source] || nodeMap[e.source?.id])
@@ -69,47 +198,20 @@ export default function TopologyGraph({
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collision', d3.forceCollide(40));
 
-    const attackPathSet = new Set();
-    if (attackPath?.length) {
-      for (let i = 0; i < attackPath.length - 1; i++) {
-        attackPathSet.add(`${attackPath[i]}->${attackPath[i + 1]}`);
-      }
-    }
-
     const link = g
       .append('g')
       .attr('class', 'topology-links')
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('stroke', (d) => {
-        const key = linkKey(d);
-        return attackPathSet.has(key) ? '#ef4444' : 'rgba(255,255,255,0.08)';
-      })
-      .attr('stroke-width', (d) => (attackPathSet.has(linkKey(d)) ? 2.5 : 1))
-      .attr('stroke-dasharray', (d) => (attackPathSet.has(linkKey(d)) ? '6 4' : ''))
+      .attr('stroke', 'rgba(255,255,255,0.08)')
+      .attr('stroke-width', 1)
       .attr('opacity', 1);
 
     linkSelectionRef.current = link;
-
-    if (attackPath?.length) {
-      link
-        .filter((d) => attackPathSet.has(linkKey(d)))
-        .attr('stroke-dashoffset', 0)
-        .transition()
-        .duration(1000)
-        .ease(d3.easeLinear)
-        .attrTween('stroke-dashoffset', () => d3.interpolate(0, -20))
-        .on('end', function repeat() {
-          d3.select(this)
-            .attr('stroke-dashoffset', 0)
-            .transition()
-            .duration(1000)
-            .ease(d3.easeLinear)
-            .attrTween('stroke-dashoffset', () => d3.interpolate(0, -20))
-            .on('end', repeat);
-        });
-    }
+    link.each(function (d) {
+      linksByKeyRef.current.set(linkKey(d), d3.select(this));
+    });
 
     const setLinkHighlight = (nodeId) => {
       if (!linkSelectionRef.current) return;
@@ -147,6 +249,18 @@ export default function TopologyGraph({
           })
       );
 
+    // Outer ring (always created for attack-path pulse; hidden unless highlighted).
+    const ring = node
+      .append('circle')
+      .attr('class', 'attack-ring')
+      .attr('r', 24)
+      .attr('fill', 'none')
+      .attr('stroke', ATTACK_RED)
+      .attr('stroke-width', 2)
+      .style('opacity', 0)
+      .style('pointer-events', 'none');
+
+    // High-risk static ring
     node
       .filter((d) => d.risk > 70)
       .append('circle')
@@ -156,7 +270,7 @@ export default function TopologyGraph({
       .attr('stroke-width', 1)
       .attr('stroke-opacity', 0.3);
 
-    node
+    const mainCircle = node
       .append('circle')
       .attr('class', 'main-node')
       .attr('r', 16)
@@ -182,6 +296,17 @@ export default function TopologyGraph({
         e.stopPropagation();
         onNodeSelectRef.current?.(d);
       });
+
+    // Populate node map for animation lookups.
+    node.each(function (d) {
+      const group = d3.select(this);
+      nodesByIdRef.current.set(d.id, {
+        group,
+        mainCircle: group.select('circle.main-node'),
+        ring: group.select('circle.attack-ring'),
+        level: d.level,
+      });
+    });
 
     node
       .append('text')
@@ -215,9 +340,27 @@ export default function TopologyGraph({
 
     return () => {
       sim.stop();
+      clearTimeouts();
       linkSelectionRef.current = null;
+      linksByKeyRef.current = new Map();
+      nodesByIdRef.current = new Map();
     };
-  }, [topology, riskScores, height, attackPath]);
+  }, [topology, riskScores, height, clearTimeouts]);
+
+  // Auto-play replay whenever attackPath transitions to a non-empty chain.
+  useEffect(() => {
+    if (!hasPath) {
+      stopReplay();
+      return;
+    }
+    // Let D3 finish its first sim tick before triggering animation.
+    const id = setTimeout(() => playReplay(), 50);
+    return () => {
+      clearTimeout(id);
+      clearTimeouts();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathKey, hasPath]);
 
   useLayoutEffect(() => {
     if (!svgRef.current) return;
@@ -227,13 +370,70 @@ export default function TopologyGraph({
       .select('circle.main-node')
       .attr('stroke-width', function () {
         const id = d3.select(this.parentNode).attr('data-node-id');
+        // Don't override a replay highlight.
+        const entry = nodesByIdRef.current.get(id);
+        const isAttackNode = entry && attackPath?.includes(id);
+        if (isAttackNode) return 3;
         return id === selectedNodeId ? 3 : 2;
       });
-  }, [selectedNodeId, topology]);
+  }, [selectedNodeId, topology, attackPath]);
 
   return (
     <div ref={containerRef} className={`relative w-full min-w-0 ${className}`} style={{ height }}>
+      {/* Scoped CSS for pulse animations */}
+      <style>{`
+        @keyframes attackNodePulse {
+          0%, 100% { stroke-width: 3; filter: drop-shadow(0 0 2px ${ATTACK_RED}); }
+          50%      { stroke-width: 4; filter: drop-shadow(0 0 10px ${ATTACK_RED}); }
+        }
+        .attack-node-pulse { animation: attackNodePulse 1.2s ease-in-out infinite; }
+        @keyframes attackRingPulse {
+          0%   { r: 20; opacity: 0.9; }
+          100% { r: 34; opacity: 0;   }
+        }
+        .attack-ring-pulse { animation: attackRingPulse 1.4s ease-out infinite; transform-origin: center; }
+      `}</style>
+
       <svg ref={svgRef} width="100%" height={height} className="bg-transparent" />
+
+      {/* Replay / Reset overlay */}
+      {hasPath && (
+        <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20">
+          <button
+            type="button"
+            onClick={playReplay}
+            disabled={playing}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-semibold uppercase tracking-wider border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Replay attack path"
+          >
+            <Play className="w-3 h-3" fill="currentColor" />
+            {playing ? 'Replaying…' : 'Replay'}
+          </button>
+          <button
+            type="button"
+            onClick={stopReplay}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-semibold uppercase tracking-wider border border-base-700 bg-base-900/80 text-base-300 hover:bg-base-800 transition-colors"
+            title="Reset animation"
+          >
+            <Square className="w-3 h-3" fill="currentColor" />
+            Reset
+          </button>
+        </div>
+      )}
+
+      {/* Attack path legend (bottom-left) */}
+      {showLegend && (
+        <div className="absolute bottom-2 left-2 z-20 inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-red-500/30 bg-red-500/10 backdrop-blur-sm">
+          <span className="inline-flex h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-red-300">
+            Attack Path
+          </span>
+          <span className="text-[10px] font-mono text-red-300/70">
+            {attackPath.length} hops
+          </span>
+        </div>
+      )}
+
       {tooltip && (
         <div
           className="pointer-events-none absolute z-50 rounded-md border border-base-800 bg-base-900/95 px-3 py-2 backdrop-blur-sm"

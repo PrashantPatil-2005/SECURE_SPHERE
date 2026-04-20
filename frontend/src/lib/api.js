@@ -42,8 +42,8 @@ export const api = {
   getMetrics: () => request('/api/metrics'),
   getRiskScores: () => request('/api/risk-scores'),
   getTopology: () =>
-    request('/topology/graph')
-      .catch(() => request('/api/topology/graph'))
+    request('/api/topology')
+      .catch(() => request('/topology/graph'))
       .then(normalizeTopology),
   getSystemStatus: () => request('/api/system/status'),
   getMitreMapping: () => request('/api/mitre-mapping'),

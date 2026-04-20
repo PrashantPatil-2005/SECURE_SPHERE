@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, AlertOctagon, VolumeX, Loader2, X } from 'lucide-react';
+import { Check, AlertOctagon, VolumeX, Loader2, X, CheckCircle2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,21 @@ const ACTIONS = [
     label: 'Acknowledge',
     icon: Check,
     help: 'Mark as seen — under investigation.',
-    tone: 'text-accent hover:text-accent-hover border-accent/25 hover:bg-accent/[0.06]',
+    tone: 'text-yellow-300 hover:text-yellow-200 border-yellow-500/25 hover:bg-yellow-500/[0.06]',
+  },
+  {
+    key: 'resolved',
+    label: 'Resolve',
+    icon: CheckCircle2,
+    help: 'Mark incident as resolved.',
+    tone: 'text-emerald-300 hover:text-emerald-200 border-emerald-500/25 hover:bg-emerald-500/[0.06]',
+  },
+  {
+    key: 'open',
+    label: 'Reopen',
+    icon: RotateCcw,
+    help: 'Reopen — return to triage queue.',
+    tone: 'text-base-300 hover:text-base-100 border-base-700 hover:bg-base-800/40',
   },
   {
     key: 'escalated',

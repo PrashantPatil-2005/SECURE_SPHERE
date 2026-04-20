@@ -145,6 +145,45 @@ def get_latest_summary():
     except:
         return default_summary
 
+def _events_in_last_seconds(events, seconds=60):
+    """Count events with timestamp inside the last N seconds."""
+    cutoff = datetime.utcnow() - timedelta(seconds=seconds)
+    n = 0
+    for e in events:
+        ts_str = e.get('timestamp')
+        if not ts_str:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(ts_str).replace('Z', ''))
+            if ts >= cutoff:
+                n += 1
+        except Exception:
+            continue
+    return n
+
+
+def _avg_mttd_from_postgres():
+    """Pull AVG(mttd_seconds) from kill_chains. Returns None on failure."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv("POSTGRES_HOST", "database"),
+            port=int(os.getenv("POSTGRES_PORT", 5432)),
+            dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
+            user=os.getenv("POSTGRES_USER", "securisphere_user"),
+            password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
+        )
+        with conn.cursor() as cur:
+            cur.execute("SELECT AVG(mttd_seconds) FROM kill_chains WHERE mttd_seconds IS NOT NULL")
+            row = cur.fetchone()
+        conn.close()
+        if row and row[0] is not None:
+            return round(float(row[0]), 3)
+    except Exception as exc:
+        logger.debug("avg_mttd postgres lookup failed: %s", exc)
+    return None
+
+
 def calculate_metrics():
     metrics = {
         "raw_events": {"network": 0, "api": 0, "auth": 0, "total": 0},
@@ -154,39 +193,69 @@ def calculate_metrics():
         "events_by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
         "events_by_type": defaultdict(int),
         "system_uptime": str(datetime.utcnow() - SERVER_START_TIME),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        # Additional flat fields consumed by AlertReductionCard
+        "total_raw_events": 0,
+        "total_incidents": 0,
+        "alert_reduction_ratio": 0.0,
+        "events_per_minute": 0.0,
+        "incidents_per_hour": 0.0,
+        "avg_mttd_seconds": None,
+        "detection_rate": 100.0,
     }
-    
+
     if not redis_available: return metrics
-    
+
     try:
         # Counts
         metrics["raw_events"]["network"] = redis_client.llen('events:network')
         metrics["raw_events"]["api"] = redis_client.llen('events:api')
         metrics["raw_events"]["auth"] = redis_client.llen('events:auth')
         metrics["raw_events"]["total"] = sum(metrics["raw_events"].values())
-        
+
         metrics["correlated_incidents"] = redis_client.llen('incidents')
-        
+
         if metrics["raw_events"]["total"] > 0:
             metrics["alert_reduction_percentage"] = round(
                 (1 - metrics["correlated_incidents"] / metrics["raw_events"]["total"]) * 100, 1
             )
-            
+
         # Risk Entities
         risks = get_risk_scores()
         metrics["active_risk_entities"] = len([r for r in risks.values() if r.get('current_score', 0) > 30])
-        
+
         # Severity & Types (Sample last 200 events)
         sample = get_all_events(200)
         for e in sample:
             sev = e.get('severity', {}).get('level', 'low')
             metrics["events_by_severity"][sev] += 1
             metrics["events_by_type"][e.get('event_type', 'unknown')] += 1
-            
+
+        # --- Flat KPI fields for AlertReductionCard -----------------------
+        total_raw = metrics["raw_events"]["total"]
+        total_inc = metrics["correlated_incidents"]
+        metrics["total_raw_events"] = total_raw
+        metrics["total_incidents"] = total_inc
+        metrics["alert_reduction_ratio"] = (
+            round((1 - total_inc / total_raw) * 100, 2) if total_raw > 0 else 0.0
+        )
+
+        # events per minute (last 60s across all layers)
+        epm_sample = get_all_events(500)
+        metrics["events_per_minute"] = round(_events_in_last_seconds(epm_sample, 60), 1)
+
+        # incidents per hour — simple uptime projection from raw count
+        uptime_sec = max((datetime.utcnow() - SERVER_START_TIME).total_seconds(), 1.0)
+        metrics["incidents_per_hour"] = round(total_inc * 3600 / uptime_sec, 2)
+
+        # average MTTD from Postgres kill_chains
+        avg_mttd = _avg_mttd_from_postgres()
+        if avg_mttd is not None:
+            metrics["avg_mttd_seconds"] = avg_mttd
+
     except Exception as e:
         logger.error(f"Error calculating metrics: {e}")
-        
+
     return metrics
 
 def calculate_event_stats(events):
@@ -307,12 +376,43 @@ def get_single_event(event_id):
             return jsonify({"status": "success", "data": {"event": e}})
     return jsonify({"status": "error", "message": "Event not found"}), 404
 
+def _read_incident_status_redis(incident_id):
+    """Return (status, note, updated_at) from Redis hash, or (None, None, None)."""
+    if not redis_available or not incident_id:
+        return None, None, None
+    try:
+        raw = redis_client.hgetall(f"incident_status:{incident_id}")
+        if not raw:
+            return None, None, None
+        return raw.get('status'), raw.get('note'), raw.get('updated_at')
+    except Exception:
+        return None, None, None
+
+
+def _write_incident_status_redis(incident_id, status, note):
+    updated_at = datetime.utcnow().isoformat()
+    if redis_available:
+        try:
+            redis_client.hset(
+                f"incident_status:{incident_id}",
+                mapping={
+                    "status": status,
+                    "note": note or "",
+                    "updated_at": updated_at,
+                },
+            )
+        except Exception as exc:
+            logger.warning("redis status write failed: %s", exc)
+    return updated_at
+
+
 @app.route('/api/incidents')
 def list_incidents():
     limit = min(int(request.args.get('limit', 20)), 100)
     incidents = get_incidents(limit)
 
-    # Enrich incidents with status from PostgreSQL (batch query)
+    # Batch read statuses from PostgreSQL kill_chains (legacy source of truth)
+    pg_status_map, pg_note_map = {}, {}
     try:
         import psycopg2
         import psycopg2.extras
@@ -327,19 +427,24 @@ def list_incidents():
             )
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
-                    "SELECT incident_id, status FROM kill_chains WHERE incident_id = ANY(%s)",
+                    "SELECT incident_id, status, analyst_note FROM kill_chains "
+                    "WHERE incident_id = ANY(%s)",
                     (incident_ids,),
                 )
-                status_map = {str(row['incident_id']): row['status'] for row in cur.fetchall()}
+                for row in cur.fetchall():
+                    key = str(row['incident_id'])
+                    pg_status_map[key] = row['status']
+                    pg_note_map[key] = row.get('analyst_note')
             conn.close()
-            for inc in incidents:
-                inc['status'] = status_map.get(inc.get('incident_id'), 'active')
-        else:
-            for inc in incidents:
-                inc['status'] = 'active'
     except Exception:
-        for inc in incidents:
-            inc.setdefault('status', 'active')
+        pass
+
+    # Merge in Redis override (PATCH writes to Redis hash incident_status:{id})
+    for inc in incidents:
+        iid = inc.get('incident_id')
+        redis_status, redis_note, _ = _read_incident_status_redis(iid)
+        inc['status'] = redis_status or pg_status_map.get(iid) or 'active'
+        inc['analyst_note'] = redis_note or pg_note_map.get(iid) or inc.get('analyst_note')
 
     return jsonify({
         "status": "success",
@@ -915,51 +1020,81 @@ def _bootstrap_database_schema():
         logger.warning("Database bootstrap skipped due to error: %s", exc)
 
 
+VALID_INCIDENT_STATUSES = (
+    'open', 'active',
+    'acknowledged', 'investigating',
+    'resolved',
+    'escalated', 'suppressed',
+)
+
+
 @app.route('/api/incidents/<incident_id>/status', methods=['PATCH'])
 def update_incident_status(incident_id):
-    """Update the triage status of an incident."""
+    """Update the triage status of an incident (Redis-backed, mirrored to Postgres)."""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         status = data.get('status')
-        note = data.get('note', '')
+        note = data.get('note', '') or ''
 
-        valid_statuses = ('active', 'acknowledged', 'escalated', 'suppressed')
-        if status not in valid_statuses:
+        if status not in VALID_INCIDENT_STATUSES:
             return jsonify({"status": "error", "message": "Invalid status value"}), 400
 
-        import psycopg2
-        conn = psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "database"),
-            port=int(os.getenv("POSTGRES_PORT", 5432)),
-            dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
-            user=os.getenv("POSTGRES_USER", "securisphere_user"),
-            password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
-        )
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE kill_chains SET status = %s, analyst_note = %s WHERE incident_id = %s",
-                    (status, note, incident_id),
-                )
+        # Primary store: Redis hash (per spec)
+        updated_at = _write_incident_status_redis(incident_id, status, note)
 
-        if status == 'suppressed':
-            try:
+        # Mirror to Postgres kill_chains for legacy readers
+        try:
+            import psycopg2
+            conn = psycopg2.connect(
+                host=os.getenv("POSTGRES_HOST", "database"),
+                port=int(os.getenv("POSTGRES_PORT", 5432)),
+                dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
+                user=os.getenv("POSTGRES_USER", "securisphere_user"),
+                password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
+            )
+            with conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT source_ip FROM kill_chains WHERE incident_id = %s", (incident_id,))
-                    row = cur.fetchone()
-                if row and row[0] and redis_available:
-                    redis_client.setex(f"suppressed:{row[0]}", 1800, "1")
-            except Exception:
-                pass
+                    cur.execute(
+                        "UPDATE kill_chains SET status = %s, analyst_note = %s WHERE incident_id = %s",
+                        (status, note, incident_id),
+                    )
+                    if status == 'suppressed':
+                        cur.execute("SELECT source_ip FROM kill_chains WHERE incident_id = %s", (incident_id,))
+                        row = cur.fetchone()
+                        if row and row[0] and redis_available:
+                            redis_client.setex(f"suppressed:{row[0]}", 1800, "1")
+            conn.close()
+        except Exception as exc:
+            logger.warning("postgres status mirror failed: %s", exc)
 
-        conn.close()
+        socketio.emit('incident_status_change', {
+            "type": "incident_status_change",
+            "incident_id": incident_id,
+            "status": status,
+            "note": note,
+            "updated_at": updated_at,
+        })
 
-        socketio.emit('incident_status_change',
-                      {"incident_id": incident_id, "status": status})
-
-        return jsonify({"status": "success", "data": {"incident_id": incident_id, "status": status}})
+        return jsonify({
+            "status": "success",
+            "incident_id": incident_id,
+            "updated_at": updated_at,
+            "data": {"incident_id": incident_id, "status": status, "updated_at": updated_at},
+        })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/incidents/<incident_id>/status', methods=['GET'])
+def get_incident_status(incident_id):
+    """Return the current status for an incident (Redis hash, fallback open)."""
+    status, note, updated_at = _read_incident_status_redis(incident_id)
+    return jsonify({
+        "incident_id": incident_id,
+        "status": status or "open",
+        "note": note or "",
+        "updated_at": updated_at or "",
+    })
 
 
 # ============================================================

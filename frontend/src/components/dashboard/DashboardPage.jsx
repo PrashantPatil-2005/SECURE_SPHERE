@@ -121,6 +121,7 @@ export default function DashboardPage({
               events={events}
               incidents={incidents}
               timeline={timeline}
+              metrics={metrics}
               topology={topology}
               riskScores={riskScores}
               selectedId={selectedId}
@@ -133,6 +134,7 @@ export default function DashboardPage({
               events={events}
               incidents={incidents}
               timeline={timeline}
+              metrics={metrics}
               topology={topology}
               riskScores={riskScores}
               selectedId={selectedId}
