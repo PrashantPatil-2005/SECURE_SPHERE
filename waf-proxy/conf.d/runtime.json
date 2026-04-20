@@ -1,0 +1,5 @@
+{
+  "upstream": "",
+  "waf_enabled": true,
+  "rate_limit_rpm": 600
+}

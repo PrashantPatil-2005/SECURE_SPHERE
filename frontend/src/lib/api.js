@@ -46,6 +46,17 @@ export const api = {
       .catch(() => request('/topology/graph'))
       .then(normalizeTopology),
   getSystemStatus: () => request('/api/system/status'),
+  getProxyConfig: () => request('/api/config/proxy'),
+  setProxyConfig: (payload) =>
+    fetch(`${BASE}/api/config/proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || `API ${r.status}`);
+      return j;
+    }),
   getMitreMapping: () => request('/api/mitre-mapping'),
   getTopologyChecks: () => request('/api/topology-checks'),
   getDashboardSummary: () => request('/api/dashboard/summary'),

@@ -222,6 +222,10 @@ services:
       SECURISPHERE_WEBAPP_URL: http://web-app:80
       SECURISPHERE_ENGINE_URL: http://correlation-engine:5070
       SECURISPHERE_AUTHMON_URL: http://auth-monitor:5060
+      WAF_CONFIG_DIR: /etc/waf/conf.d
+      WAF_ADMIN_URL: http://waf-proxy:8081
+      WAF_PUBLIC_URL: http://localhost:8088
+      WAF_PUBLIC_TLS_URL: https://localhost:8443
     depends_on:
       redis:
         condition: service_healthy
@@ -229,6 +233,8 @@ services:
         condition: service_healthy
       topology-collector:
         condition: service_healthy
+    volumes:
+      - waf-config:/etc/waf/conf.d
     networks:
       - securisphere-network
     healthcheck:
@@ -387,6 +393,55 @@ services:
       - auth-service
     restart: unless-stopped
 
+  waf-proxy:
+    build:
+      context: ./waf-proxy
+      dockerfile: Dockerfile
+    container_name: securisphere-wafproxy
+    hostname: waf-proxy
+    ports:
+      - "${WAF_PROXY_PORT:-8088}:8080"
+      - "${WAF_PROXY_TLS_PORT:-8443}:8443"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+    volumes:
+      - waf-config:/etc/waf/conf.d
+      - waf-ssl:/etc/waf/ssl
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  proxy-monitor:
+    build:
+      context: ./backend/monitors/proxy
+      dockerfile: Dockerfile
+    container_name: securisphere-proxymon
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+      waf-proxy:
+        condition: service_started
+    networks:
+      - securisphere-network
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   browser-monitor:
     build:
       context: ./backend/monitors/browser
@@ -437,3 +492,5 @@ volumes:
   postgres-data:
   api-logs:
   auth-logs:
+  waf-config:
+  waf-ssl:
