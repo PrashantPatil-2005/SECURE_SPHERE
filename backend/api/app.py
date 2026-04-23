@@ -43,6 +43,9 @@ logger = logging.getLogger("SecuriSphereBackend")
 logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
 # Flask Setup
+if os.getenv("ALLOW_LOCALHOST_UPSTREAM", "0") == "1":
+    logger.warning("ALLOW_LOCALHOST_UPSTREAM=1 — SSRF loopback guard disabled. Demo only; never in production.")
+
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
@@ -759,9 +762,10 @@ def _validate_upstream(url: str) -> str:
     if not p.hostname:
         raise ValueError("Missing hostname")
     # Reject localhost / internal network targets to prevent SSRF pivots.
+    # For local demos, set ALLOW_LOCALHOST_UPSTREAM=1 to opt in.
     host = p.hostname.lower()
     blocked_hosts = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
-    if host in blocked_hosts:
+    if host in blocked_hosts and os.getenv("ALLOW_LOCALHOST_UPSTREAM", "0") != "1":
         raise ValueError("Cannot protect localhost")
     port = f":{p.port}" if p.port else ""
     return f"{p.scheme}://{p.hostname}{port}"

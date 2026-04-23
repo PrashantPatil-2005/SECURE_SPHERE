@@ -1,17 +1,18 @@
 import { io } from 'socket.io-client';
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE = import.meta.env.VITE_API_URL ?? '';
 let socket = null;
 
 export function connectSocket(handlers) {
   if (socket) socket.disconnect();
 
-  socket = io(BASE, {
+  const opts = {
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionAttempts: Infinity,
-  });
+  };
+  socket = BASE ? io(BASE, opts) : io(opts);
 
   socket.on('connect', () => handlers.onConnect?.());
   socket.on('disconnect', () => handlers.onDisconnect?.());
