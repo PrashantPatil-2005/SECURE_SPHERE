@@ -2,8 +2,12 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: securisphere-redis
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    # Port not exposed by default. Uncomment for local dev only.
+    # ports:
+    #   - "${REDIS_PORT:-6379}:6379"
+    expose:
+      - "6379"
+    command: ["redis-server", "--save", "60", "1", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - redis-data:/data
     networks:
@@ -23,12 +27,15 @@ services:
   database:
     image: postgres:15-alpine
     container_name: securisphere-db
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Port not exposed by default. Uncomment ONLY for local dev DB access.
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
       POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -56,6 +63,7 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
+      ALLOW_PLAINTEXT_LOGIN: 1
     depends_on:
       redis:
         condition: service_healthy
@@ -86,6 +94,7 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
+      ALLOW_PLAINTEXT_LOGIN: 1
     depends_on:
       redis:
         condition: service_healthy
@@ -209,13 +218,23 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
-      FLASK_ENV: development
+      FLASK_ENV: ${FLASK_ENV:-development}
       POSTGRES_HOST: database
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
       POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
-      JWT_SECRET: ${JWT_SECRET:-securisphere-jwt-secret-2024}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required - generate with openssl rand -hex 32}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:4000}
+      RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT:-200/minute}
+      RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-10/minute}
+      RATE_LIMIT_ATTACK: ${RATE_LIMIT_ATTACK:-5/hour}
+      ALLOW_LOCALHOST_UPSTREAM: ${ALLOW_LOCALHOST_UPSTREAM:-0}
+      ALLOW_PLAINTEXT_LOGIN: 1
+      ADMIN_BOOTSTRAP_USER: ${ADMIN_BOOTSTRAP_USER:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
       SECURISPHERE_API_URL: http://api-server:5000
       SECURISPHERE_AUTH_URL: http://auth-service:5001
       SECURISPHERE_BACKEND_URL: http://localhost:8000
@@ -292,7 +311,7 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
       POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       HF_API_TOKEN: ${HF_API_TOKEN:-}
       HF_MODEL: ${HF_MODEL:-Qwen/Qwen2.5-72B-Instruct}
     depends_on:
@@ -458,7 +477,7 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
       POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securisphere_pass_2024}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       TOPOLOGY_URL: http://topology-collector:5080
     depends_on:
       redis:

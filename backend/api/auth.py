@@ -5,7 +5,11 @@ POST /api/auth/login   → Validate credentials, return JWT
 POST /api/auth/verify  → Validate an existing JWT token
 GET  /api/auth/me      → Return current user info from token
 
-All database credentials are read from environment variables.
+Security:
+  • JWT_SECRET is REQUIRED in production (FLASK_ENV=production); boot fails otherwise.
+  • Passwords are stored as Werkzeug pbkdf2/scrypt hashes. Plaintext passwords
+    are accepted ONLY when ALLOW_PLAINTEXT_LOGIN=1 (legacy seed migration).
+  • Default behaviour rejects any non-hashed password.
 """
 
 import os
@@ -17,7 +21,7 @@ import jwt
 import psycopg2
 import psycopg2.extras
 from flask import Blueprint, jsonify, request
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = logging.getLogger("SecuriSphereAuth")
 
@@ -25,47 +29,88 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 # ── Configuration ───────────────────────────────────────────────────────────
 
-JWT_SECRET = os.getenv("JWT_SECRET", "securisphere-default-secret-change-me")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", 1))
+JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "1"))
+FLASK_ENV = os.getenv("FLASK_ENV", "production").lower()
+ALLOW_PLAINTEXT_LOGIN = os.getenv("ALLOW_PLAINTEXT_LOGIN", "0") == "1"
 
+if not JWT_SECRET or len(JWT_SECRET) < 16:
+    if FLASK_ENV == "production":
+        raise RuntimeError(
+            "JWT_SECRET environment variable is required in production "
+            "and must be at least 16 characters. Generate with: "
+            "openssl rand -hex 32"
+        )
+    JWT_SECRET = JWT_SECRET or "dev-only-not-for-production"
+    logger.warning(
+        "JWT_SECRET is unset or weak — running in development fallback mode."
+    )
 
 # ── Database helper ─────────────────────────────────────────────────────────
 
 def _get_db_connection():
     """Open a PostgreSQL connection using environment variables."""
+    if os.getenv("DATABASE_URL"):
+        return psycopg2.connect(os.getenv("DATABASE_URL"))
+    pwd = os.getenv("POSTGRES_PASSWORD")
+    if not pwd:
+        raise RuntimeError("POSTGRES_PASSWORD is required")
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "database"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
         dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
         user=os.getenv("POSTGRES_USER", "securisphere_user"),
-        password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
+        password=pwd,
     )
 
+
 def _ensure_auth_schema():
-    """Create auth table and seed users for fresh cloud databases."""
+    """Create auth table for fresh deployments. NEVER seeds plaintext."""
     conn = None
     try:
         conn = _get_db_connection()
         with conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS users (
                         id SERIAL PRIMARY KEY,
                         username VARCHAR(50) NOT NULL UNIQUE,
                         email VARCHAR(100) NOT NULL,
                         password_hash VARCHAR(255) NOT NULL,
                         role VARCHAR(20) DEFAULT 'user',
+                        failed_attempts INTEGER NOT NULL DEFAULT 0,
+                        locked_until TIMESTAMPTZ,
+                        last_login_at TIMESTAMPTZ,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                     );
-                """)
-                cur.execute("""
-                    INSERT INTO users (username, email, password_hash, role) VALUES
-                    ('admin', 'admin@example.com', 'admin123', 'admin'),
-                    ('user1', 'user1@example.com', 'password123', 'user'),
-                    ('user2', 'user2@example.com', 'securepass', 'user')
-                    ON CONFLICT (username) DO NOTHING;
-                """)
+                    """
+                )
+                cur.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;"
+                )
+                cur.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;"
+                )
+                cur.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;"
+                )
+
+                # Bootstrap admin from env vars only — no hardcoded plaintext.
+                bootstrap_user = os.getenv("ADMIN_BOOTSTRAP_USER")
+                bootstrap_pwd = os.getenv("ADMIN_BOOTSTRAP_PASSWORD")
+                if bootstrap_user and bootstrap_pwd:
+                    cur.execute("SELECT 1 FROM users WHERE username=%s", (bootstrap_user,))
+                    if not cur.fetchone():
+                        cur.execute(
+                            "INSERT INTO users (username,email,password_hash,role) "
+                            "VALUES (%s,%s,%s,'admin')",
+                            (bootstrap_user,
+                             os.getenv("ADMIN_BOOTSTRAP_EMAIL", f"{bootstrap_user}@local"),
+                             generate_password_hash(bootstrap_pwd)),
+                        )
+                        logger.info("Bootstrapped admin user '%s' from env", bootstrap_user)
     except psycopg2.Error as exc:
         logger.error("Could not ensure auth schema: %s", exc)
     finally:
@@ -74,13 +119,13 @@ def _ensure_auth_schema():
 
 
 def _fetch_user_by_username(username):
-    """Query the users table and return the row as a dict, or None."""
     conn = None
     try:
         conn = _get_db_connection()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT id, username, password_hash, role FROM users WHERE username = %s",
+                "SELECT id, username, password_hash, role, failed_attempts, locked_until "
+                "FROM users WHERE username = %s",
                 (username,),
             )
             return cur.fetchone()
@@ -89,10 +134,47 @@ def _fetch_user_by_username(username):
             conn.close()
 
 
+def _record_login_failure(username):
+    conn = None
+    try:
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET failed_attempts = failed_attempts + 1, "
+                    "locked_until = CASE WHEN failed_attempts + 1 >= 5 "
+                    "THEN NOW() + INTERVAL '15 minutes' ELSE locked_until END "
+                    "WHERE username = %s",
+                    (username,),
+                )
+    except Exception as exc:
+        logger.warning("Could not record login failure: %s", exc)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _record_login_success(user_id):
+    conn = None
+    try:
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET failed_attempts = 0, locked_until = NULL, "
+                    "last_login_at = NOW() WHERE id = %s",
+                    (user_id,),
+                )
+    except Exception as exc:
+        logger.warning("Could not record login success: %s", exc)
+    finally:
+        if conn:
+            conn.close()
+
+
 # ── JWT helpers ─────────────────────────────────────────────────────────────
 
 def _generate_token(user_row):
-    """Create a signed JWT for the authenticated user."""
     now = datetime.now(timezone.utc)
     payload = {
         "user_id": user_row["id"],
@@ -105,7 +187,6 @@ def _generate_token(user_row):
 
 
 def _decode_token(token):
-    """Decode and validate a JWT. Returns the payload dict or None."""
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
@@ -113,7 +194,6 @@ def _decode_token(token):
 
 
 def token_required(f):
-    """Decorator that protects a route with JWT authentication."""
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get("Authorization", "")
@@ -127,6 +207,19 @@ def token_required(f):
     return decorated
 
 
+def role_required(*allowed_roles):
+    """Decorator to gate a route by user role. Apply after token_required."""
+    def wrapper(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            user = getattr(request, "current_user", None)
+            if not user or user.get("role") not in allowed_roles:
+                return jsonify({"status": "error", "message": "Forbidden"}), 403
+            return f(*args, **kwargs)
+        return decorated
+    return wrapper
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @auth_bp.route("/login", methods=["POST"])
@@ -134,7 +227,6 @@ def login():
     """Authenticate a user and return a JWT."""
     _ensure_auth_schema()
 
-    # 1. Parse request body
     body = request.get_json(silent=True)
     if not body:
         return jsonify({"status": "error", "message": "Request body must be JSON"}), 400
@@ -145,7 +237,6 @@ def login():
     if not username or not password:
         return jsonify({"status": "error", "message": "Username and password are required"}), 400
 
-    # 2. Look up user
     try:
         user = _fetch_user_by_username(username)
     except psycopg2.Error as db_err:
@@ -153,24 +244,50 @@ def login():
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
     if user is None:
+        # Constant-time-ish: still compute a dummy hash check
+        check_password_hash(
+            "pbkdf2:sha256:600000$dummy$0000000000000000000000000000000000000000000000000000000000000000",
+            password,
+        )
         return jsonify({"status": "error", "message": "Invalid username or password"}), 401
 
-    # 3. Verify password
-    #    Support both werkzeug-hashed passwords and legacy plaintext seeds
-    stored_hash = user["password_hash"]
+    # Lockout enforcement
+    locked_until = user.get("locked_until")
+    if locked_until and locked_until > datetime.now(timezone.utc):
+        return jsonify({"status": "error", "message": "Account temporarily locked. Try again later."}), 423
+
+    stored_hash = user["password_hash"] or ""
     password_valid = False
 
-    if stored_hash.startswith(("pbkdf2:", "scrypt:")):
-        # Werkzeug-hashed password
-        password_valid = check_password_hash(stored_hash, password)
-    else:
-        # Legacy plaintext fallback (from init_db.sql seed data)
+    if stored_hash.startswith(("pbkdf2:", "scrypt:", "$2a$", "$2b$", "$argon2")):
+        try:
+            password_valid = check_password_hash(stored_hash, password)
+        except Exception:
+            password_valid = False
+    elif ALLOW_PLAINTEXT_LOGIN and FLASK_ENV != "production":
+        # Legacy plaintext path — strictly opt-in and never in prod.
         password_valid = (stored_hash == password)
+        if password_valid:
+            # Auto-upgrade to hash on first successful login.
+            try:
+                conn = _get_db_connection()
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE users SET password_hash=%s WHERE id=%s",
+                            (generate_password_hash(password), user["id"]),
+                        )
+                conn.close()
+            except Exception as exc:
+                logger.warning("Plaintext-to-hash upgrade failed: %s", exc)
+    else:
+        password_valid = False  # plaintext stored but plaintext login disabled
 
     if not password_valid:
+        _record_login_failure(username)
         return jsonify({"status": "error", "message": "Invalid username or password"}), 401
 
-    # 4. Generate JWT
+    _record_login_success(user["id"])
     token = _generate_token(user)
 
     logger.info("User '%s' authenticated successfully", username)
@@ -188,7 +305,6 @@ def login():
 
 @auth_bp.route("/verify", methods=["POST"])
 def verify():
-    """Verify that a JWT is still valid."""
     body = request.get_json(silent=True)
     token = (body or {}).get("token", "")
 
@@ -209,7 +325,6 @@ def verify():
 @auth_bp.route("/me", methods=["GET"])
 @token_required
 def me():
-    """Return the current user's profile from their JWT."""
     user = request.current_user
     return jsonify({"status": "success", "user": {
         "user_id": user["user_id"],

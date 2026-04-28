@@ -19,7 +19,7 @@ from gevent import monkey
 # Patch gevent
 monkey.patch_all()
 
-from auth import auth_bp
+from auth import auth_bp, token_required, role_required
 from topology_checks import bp as topology_checks_bp
 
 # --- MITRE ATT&CK static map (shared with correlation engine) ---------------
@@ -43,16 +43,70 @@ logger = logging.getLogger("SecuriSphereBackend")
 logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
 # Flask Setup
+FLASK_ENV = os.getenv("FLASK_ENV", "production").lower()
+IS_PRODUCTION = FLASK_ENV == "production"
+
 if os.getenv("ALLOW_LOCALHOST_UPSTREAM", "0") == "1":
     logger.warning("ALLOW_LOCALHOST_UPSTREAM=1 — SSRF loopback guard disabled. Demo only; never in production.")
+    if IS_PRODUCTION:
+        raise RuntimeError("ALLOW_LOCALHOST_UPSTREAM=1 is forbidden when FLASK_ENV=production")
+
+# Boot-time env validation
+if IS_PRODUCTION:
+    _required = ["JWT_SECRET"]
+    _missing = [v for v in _required if not os.getenv(v)]
+    if _missing:
+        raise RuntimeError(f"Missing required env vars in production: {_missing}")
+    if len(os.getenv("JWT_SECRET", "")) < 16:
+        raise RuntimeError("JWT_SECRET must be at least 16 chars in production")
+    if not os.getenv("POSTGRES_PASSWORD") and not os.getenv("DATABASE_URL"):
+        raise RuntimeError("POSTGRES_PASSWORD or DATABASE_URL is required in production")
+
+# CORS — explicit allowlist via env, wildcard only allowed outside production.
+_cors_raw = os.getenv("CORS_ORIGINS", "*").strip()
+if _cors_raw == "*" and IS_PRODUCTION:
+    raise RuntimeError("CORS_ORIGINS=* is forbidden in production. Set explicit origins.")
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()] or ["*"]
 
 app = Flask(__name__)
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
+CORS(app, resources={r"/api/*": {"origins": _cors_origins}}, supports_credentials=True)
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode="gevent")
+
+# --- Rate limiting ----------------------------------------------------------
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+
+    _limiter_storage = (
+        f"redis://{os.getenv('REDIS_HOST','redis')}:{os.getenv('REDIS_PORT','6379')}"
+    )
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=[os.getenv("RATE_LIMIT_DEFAULT", "200/minute")],
+        storage_uri=_limiter_storage,
+        strategy="moving-window",
+    )
+except Exception as _exc:  # graceful degradation
+    logger.warning("Rate limiter disabled: %s", _exc)
+    class _NoopLimiter:
+        def limit(self, *a, **kw):
+            def deco(f): return f
+            return deco
+        def exempt(self, f): return f
+    limiter = _NoopLimiter()
 
 # Register Blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(topology_checks_bp)
+
+# Rate-limit login route after blueprint registration
+try:
+    limiter.limit(os.getenv("RATE_LIMIT_LOGIN", "10/minute"))(
+        app.view_functions["auth.login"]
+    )
+except Exception:
+    pass
 
 # Redis Config
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
@@ -170,7 +224,7 @@ def _avg_mttd_from_postgres():
     """Pull AVG(mttd_seconds) from kill_chains. Returns None on failure."""
     try:
         import psycopg2
-        conn = psycopg2.connect(
+        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "database"),
             port=int(os.getenv("POSTGRES_PORT", 5432)),
             dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -288,11 +342,20 @@ def log_request():
 @app.after_request
 def add_headers(response):
     response.headers['X-SecuriSphere-Version'] = '1.0.0'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    if IS_PRODUCTION:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # Remove server fingerprint
+    response.headers.pop('Server', None)
     return response
 
 # --- REST API Endpoints ---
 
 @app.route('/api/health')
+@limiter.exempt
 def health():
     return jsonify({
         "status": "healthy",
@@ -422,7 +485,7 @@ def list_incidents():
         import psycopg2.extras
         incident_ids = [i.get('incident_id') for i in incidents if i.get('incident_id')]
         if incident_ids:
-            conn = psycopg2.connect(
+            conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
                 host=os.getenv("POSTGRES_HOST", "database"),
                 port=int(os.getenv("POSTGRES_PORT", 5432)),
                 dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -573,6 +636,8 @@ def latest_events():
     })
 
 @app.route('/api/events/clear', methods=['POST'])
+@token_required
+@role_required('admin')
 def clear_events():
     if redis_available:
         redis_client.delete("events:network", "events:api", "events:auth", "incidents", "risk_scores_current", "latest_summary")
@@ -580,7 +645,7 @@ def clear_events():
     # Also clear PostgreSQL incidents (kill_chains)
     try:
         import psycopg2
-        conn = psycopg2.connect(
+        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "database"),
             port=int(os.getenv("POSTGRES_PORT", 5432)),
             dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -794,6 +859,8 @@ def get_proxy_config():
 
 
 @app.route('/api/config/proxy', methods=['POST'])
+@token_required
+@role_required('admin')
 def set_proxy_config():
     body = request.get_json(silent=True) or {}
 
@@ -1062,7 +1129,7 @@ def _fetch_kill_chain_from_pg(incident_id: str):
     try:
         import psycopg2
         import psycopg2.extras
-        conn = psycopg2.connect(
+        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "database"),
             port=int(os.getenv("POSTGRES_PORT", 5432)),
             dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -1104,7 +1171,7 @@ def list_kill_chains():
     try:
         import psycopg2
         import psycopg2.extras
-        conn = psycopg2.connect(
+        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "database"),
             port=int(os.getenv("POSTGRES_PORT", 5432)),
             dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -1190,7 +1257,7 @@ def _ensure_kill_chain_status_columns():
     """Add status and analyst_note columns to kill_chains if they don't exist."""
     try:
         import psycopg2
-        conn = psycopg2.connect(
+        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "database"),
             port=int(os.getenv("POSTGRES_PORT", 5432)),
             dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -1227,7 +1294,7 @@ def _bootstrap_database_schema():
 
     try:
         import psycopg2
-        conn = psycopg2.connect(
+        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "database"),
             port=int(os.getenv("POSTGRES_PORT", 5432)),
             dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -1252,6 +1319,7 @@ VALID_INCIDENT_STATUSES = (
 
 
 @app.route('/api/incidents/<incident_id>/status', methods=['PATCH'])
+@token_required
 def update_incident_status(incident_id):
     """Update the triage status of an incident (Redis-backed, mirrored to Postgres)."""
     try:
@@ -1268,7 +1336,7 @@ def update_incident_status(incident_id):
         # Mirror to Postgres kill_chains for legacy readers
         try:
             import psycopg2
-            conn = psycopg2.connect(
+            conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
                 host=os.getenv("POSTGRES_HOST", "database"),
                 port=int(os.getenv("POSTGRES_PORT", 5432)),
                 dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -1445,7 +1513,7 @@ def mttd_report():
     try:
         import psycopg2
         import psycopg2.extras
-        conn = psycopg2.connect(
+        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "database"),
             port=int(os.getenv("POSTGRES_PORT", 5432)),
             dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -1525,15 +1593,18 @@ def get_discord_config():
 
 # POST Endpoint to save config
 @app.route('/api/config/discord', methods=['POST'])
+@token_required
+@role_required('admin')
 def set_discord_config():
     try:
         data = request.get_json()
         url = data.get('url', '').strip()
         
         if url:
-            # Basic validation: must start with http
-            if not url.startswith('http'):
-                 return jsonify({"status": "error", "message": "Invalid URL format"}), 400
+            # Strict: only allow Discord HTTPS webhook URLs (anti-SSRF + anti-data-exfil)
+            if not (url.startswith("https://discord.com/api/webhooks/")
+                    or url.startswith("https://discordapp.com/api/webhooks/")):
+                return jsonify({"status": "error", "message": "Only Discord HTTPS webhook URLs are accepted"}), 400
             redis_client.set('config:discord_webhook', url)
         else:
             # If empty string provided, delete the key (disable feature)
@@ -1545,17 +1616,23 @@ def set_discord_config():
 
 # POST Endpoint to test the webhook immediately
 @app.route('/api/config/discord/test', methods=['POST'])
+@token_required
+@role_required('admin')
 def test_discord_config():
     try:
         data = request.get_json()
         url = data.get('url', '').strip()
-        
+
         if not url:
             return jsonify({"status": "error", "message": "No URL provided"}), 400
-            
-        import requests
+
+        # Validate webhook URL — must be Discord HTTPS endpoint
+        if not url.startswith("https://discord.com/api/webhooks/") and \
+           not url.startswith("https://discordapp.com/api/webhooks/"):
+            return jsonify({"status": "error", "message": "Only Discord HTTPS webhook URLs are accepted"}), 400
+
         payload = {
-            "content": "✅ **SecuriSphere Test:** Notification system is operational."
+            "content": "**SecuriSphere Test:** Notification system is operational."
         }
         # Send actual request to Discord
         resp = requests.post(url, json=payload, timeout=5)
@@ -1606,6 +1683,9 @@ def _attack_reader(proc, scenario):
 
 
 @app.route('/api/attack/run', methods=['POST'])
+@token_required
+@role_required('admin')
+@limiter.limit(os.getenv("RATE_LIMIT_ATTACK", "5/hour"))
 def api_attack_run():
     body = request.get_json(silent=True) or {}
     scenario = str(body.get("scenario", "")).lower().strip()
@@ -1680,12 +1760,13 @@ def _heartbeat_loop():
         socketio.emit('heartbeat', {'ts': time.time()})
 
 
-if __name__ == '__main__':
+def _bootstrap_runtime():
+    """Initialise Redis + Postgres + background threads. Called by both
+    `python app.py` (dev) and the gunicorn entrypoint (prod)."""
     connect_redis()
     _bootstrap_database_schema()
     _ensure_kill_chain_status_columns()
 
-    # Start threads
     t1 = threading.Thread(target=redis_subscriber)
     t1.daemon = True
     t1.start()
@@ -1695,13 +1776,31 @@ if __name__ == '__main__':
     t2.start()
 
     socketio.start_background_task(_heartbeat_loop)
-    
+
+
+# When loaded by gunicorn, bootstrap immediately on import.
+if os.getenv("GUNICORN_BOOT", "0") == "1":
+    _bootstrap_runtime()
+
+
+if __name__ == '__main__':
+    _bootstrap_runtime()
+
     print("========================================")
     print("  SecuriSphere Backend API v1.0.0")
+    print(f"  Mode:       {FLASK_ENV}")
     print("========================================")
     print(f"  REST API:   http://0.0.0.0:{APP_PORT}")
     print(f"  WebSocket:  ws://0.0.0.0:{APP_PORT}")
     print(f"  Redis:      {REDIS_HOST}:{REDIS_PORT}")
     print("========================================")
-    
-    socketio.run(app, host='0.0.0.0', port=APP_PORT, debug=False, allow_unsafe_werkzeug=True)
+
+    if IS_PRODUCTION:
+        # Refuse to start the Flask dev server in production. Use gunicorn.
+        raise RuntimeError(
+            "Refusing to start Flask dev server in production. "
+            "Use gunicorn: gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker "
+            "-w 1 -b 0.0.0.0:8000 app:app"
+        )
+
+    socketio.run(app, host='0.0.0.0', port=APP_PORT, debug=False)

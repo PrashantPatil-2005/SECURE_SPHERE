@@ -253,7 +253,7 @@ def _pg_conn():
     starts if psycopg2 is unavailable (e.g. during local dev).
     """
     import psycopg2  # local import — keeps startup fast in minimal envs
-    return psycopg2.connect(
+    return psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "database"),
         port=int(os.getenv("POSTGRES_PORT", 5432)),
         dbname=os.getenv("POSTGRES_DB", "securisphere_db"),

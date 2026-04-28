@@ -1,0 +1,62 @@
+# --- VCS / IDE ---
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.venv
+venv
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.mypy_cache
+.ruff_cache
+
+# --- Node / frontend artifacts (each Dockerfile copies what it needs) ---
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/build
+frontend/build_errors.log
+*.log
+
+# --- Docs / dev ephemera not needed in image ---
+README.md
+DESIGN_SYSTEM.md
+ATTACK_GUIDE.md
+demo_checklist.md
+mitre_coverage_report.md
+docs
+evaluation/results
+experiment
+
+# --- Tests / sample artifacts ---
+tests/__pycache__
+samples/pcap/*
+!samples/pcap/.gitkeep
+
+# --- Local volumes / runtime ---
+logs
+*.pid
+*.sock
+
+# --- CI / claude / harness ---
+.claude
+CLAUDE.md
+**/CLAUDE.md

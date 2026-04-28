@@ -42,7 +42,7 @@ POSTGRES_PASS = os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024")
 
 def _get_conn() -> psycopg2.extensions.connection:
     """Open a new PostgreSQL connection.  Callers must close it."""
-    return psycopg2.connect(
+    return psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
         host=POSTGRES_HOST,
         port=POSTGRES_PORT,
         dbname=POSTGRES_DB,

@@ -7,12 +7,16 @@ services:
   - type: web
     name: securisphere-backend
     env: python
-    plan: free
+    plan: starter
     rootDir: backend/api
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --timeout 120 --access-logfile - --error-logfile - -b 0.0.0.0:$PORT app:app
     healthCheckPath: /api/health
     envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: GUNICORN_BOOT
+        value: "1"
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -45,8 +49,21 @@ services:
           property: password
       - key: JWT_SECRET
         generateValue: true
+      - key: JWT_EXPIRATION_HOURS
+        value: "1"
+      - key: CORS_ORIGINS
+        # Set to your real frontend origin in the Render dashboard
+        sync: false
+      - key: ADMIN_BOOTSTRAP_USER
+        sync: false
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        sync: false
+      - key: HF_API_TOKEN
+        sync: false
       - key: PYTHON_VERSION
-        value: 3.10.14
+        value: 3.11.9
 
   - type: web
     name: securisphere-dashboard
@@ -56,10 +73,10 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        value: https://securisphere-backend.onrender.com
+        sync: false   # Set per-environment in dashboard
 
 databases:
   - name: securisphere-db
     databaseName: securisphere_db
     user: securisphere_user
-    plan: free
+    plan: starter

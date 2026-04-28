@@ -1,0 +1,69 @@
+# Production override.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Required env (set in .env or your secret store):
+#   POSTGRES_PASSWORD, JWT_SECRET, CORS_ORIGINS, ADMIN_BOOTSTRAP_USER,
+#   ADMIN_BOOTSTRAP_PASSWORD
+
+services:
+  redis:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  database:
+    restart: always
+    # Production: never expose Postgres to host. Internal docker network only.
+    ports: []
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  backend:
+    restart: always
+    environment:
+      FLASK_ENV: production
+      ALLOW_LOCALHOST_UPSTREAM: "0"
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    read_only: false  # gunicorn writes pid; can be true with tmpfs mount
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+
+  dashboard:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  correlation-engine:
+    restart: always
+
+  topology-collector:
+    restart: always
+
+  waf-proxy:
+    restart: always
+    ports:
+      - "${WAF_PROXY_PORT:-8088}:8080"
+      - "${WAF_PROXY_TLS_PORT:-8443}:8443"
+
+  # Disable demo / attacker images in production
+  attack-simulator:
+    profiles:
+      - never

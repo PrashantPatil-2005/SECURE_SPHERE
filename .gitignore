@@ -1,28 +1,45 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
+# Claude / harness
 **/CLAUDE.md
 .claude/
 
 # Node
 node_modules/
 build/
+dist/
 .next/
+*.tsbuildinfo
 
-# Docker
+# Docker / runtime
 *.log
+*.pid
+*.sock
 
-# Environment
+# Environment / secrets
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
 
 # IDE
 .vscode/
 .idea/
 *.swp
+*~
 
 # OS
 .DS_Store
@@ -31,3 +48,5 @@ Thumbs.db
 # Project specific
 logs/*.log
 evaluation/results/*.json
+samples/pcap/*.pcap
+build_errors.log

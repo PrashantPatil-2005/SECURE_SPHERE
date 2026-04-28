@@ -65,7 +65,7 @@ def get_redis() -> redis.Redis:
 def get_pg_conn():
     """Open a new PostgreSQL connection for a single lookup. Kept short-lived
     to avoid holding pool state inside this lightweight monitor."""
-    return psycopg2.connect(
+    return psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
         host=POSTGRES_HOST,
         port=POSTGRES_PORT,
         user=POSTGRES_USER,

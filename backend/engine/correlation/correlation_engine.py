@@ -485,7 +485,7 @@ class CorrelationEngine:
         """Write incident summary to PostgreSQL correlated_incidents table."""
         try:
             import psycopg2
-            conn = psycopg2.connect(
+            conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
                 host=os.getenv("POSTGRES_HOST", "database"),
                 port=int(os.getenv("POSTGRES_PORT", 5432)),
                 dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -541,7 +541,7 @@ class CorrelationEngine:
         while time.time() < deadline:
             try:
                 import psycopg2
-                conn = psycopg2.connect(
+                conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
                     host=os.getenv("POSTGRES_HOST", "database"),
                     port=int(os.getenv("POSTGRES_PORT", 5432)),
                     dbname=os.getenv("POSTGRES_DB", "securisphere_db"),

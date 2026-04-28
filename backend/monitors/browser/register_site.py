@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_registered_sites_site_id ON registered_sites(site
 
 def _conn():
     """Open a fresh psycopg2 connection to the SecuriSphere PostgreSQL DB."""
-    return psycopg2.connect(
+    return psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
         host=POSTGRES_HOST,
         port=POSTGRES_PORT,
         user=POSTGRES_USER,

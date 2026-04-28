@@ -95,8 +95,16 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(100) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) DEFAULT 'user',
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until TIMESTAMPTZ,
+    last_login_at TIMESTAMPTZ,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Idempotent column adds for existing databases
+ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 -- ─── Kill Chain Reconstruction Table ────────────────────────────────────────
 -- Stores ordered attack steps, service traversal paths, and MTTD measurements
@@ -156,9 +164,11 @@ CREATE TABLE IF NOT EXISTS registered_sites (
 
 CREATE INDEX IF NOT EXISTS idx_registered_sites_site_id ON registered_sites(site_id);
 
--- Seed Data
-INSERT INTO users (username, email, password_hash, role) VALUES
-('admin', 'admin@example.com', 'admin123', 'admin'),
-('user1', 'user1@example.com', 'password123', 'user'),
-('user2', 'user2@example.com', 'securepass', 'user')
-ON CONFLICT DO NOTHING;
+-- ─── Seed Data ────────────────────────────────────────────────────────────
+-- NO PLAINTEXT SEED USERS. Bootstrap your first admin via env vars
+-- ADMIN_BOOTSTRAP_USER + ADMIN_BOOTSTRAP_PASSWORD on the backend container —
+-- the auth blueprint will create the user with a hashed password on first
+-- boot.
+--
+-- For local development only: set ALLOW_PLAINTEXT_LOGIN=1 and FLASK_ENV=development
+-- to seed plaintext users via a dev fixture. Never ship that to production.
