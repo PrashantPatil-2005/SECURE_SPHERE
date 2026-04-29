@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY backend/api/ /app/
+COPY backend/ai/ /app/ai/
 COPY backend/engine/mitre/ /app/mitre/
 COPY attacker/ /app/attacker/
 COPY scripts/init_db.sql /app/scripts/init_db.sql

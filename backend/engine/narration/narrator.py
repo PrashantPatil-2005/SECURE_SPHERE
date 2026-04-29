@@ -64,7 +64,9 @@ def _get_client():
 
 
 def _build_prompt(incident: Dict[str, Any]) -> str:
-    """Render a compact incident summary as a prompt for the LLM."""
+    from ai.prompts import KILL_CHAIN_NARRATIVE_PROMPT
+    import json
+    
     incident_id = incident.get("incident_id", "unknown")
     incident_type = incident.get("incident_type", "unknown")
     severity = incident.get("severity", "unknown")
@@ -75,9 +77,7 @@ def _build_prompt(incident: Dict[str, Any]) -> str:
 
     steps: List[Dict[str, Any]] = incident.get("kill_chain_steps") or []
     if not steps:
-        # Fall back to the raw correlated events if reconstruction was skipped
         raw = incident.get("correlated_events") or []
-        # correlated_events may be dicts (full events) or strings (event IDs)
         steps = [e for e in raw if isinstance(e, dict)]
 
     step_lines = []
@@ -96,12 +96,7 @@ def _build_prompt(incident: Dict[str, Any]) -> str:
     path_str = " -> ".join(service_path) if service_path else "unknown"
     mitre_str = ", ".join(mitre) if mitre else "none recorded"
 
-    return (
-        "You are a senior SOC analyst writing a short incident summary for a "
-        "dashboard. Given the kill chain below, produce a 3-5 sentence narrative "
-        "explaining (a) what the attacker likely did, (b) how the attack "
-        "progressed across services, and (c) what the immediate risk is. "
-        "Do not invent facts; only use what is listed. Be concise and direct.\n\n"
+    context = (
         f"Incident ID : {incident_id}\n"
         f"Type        : {incident_type}\n"
         f"Severity    : {severity}\n"
@@ -111,12 +106,14 @@ def _build_prompt(incident: Dict[str, Any]) -> str:
         f"MITRE       : {mitre_str}\n"
         f"Kill chain steps:\n{steps_block}\n"
     )
+    
+    return KILL_CHAIN_NARRATIVE_PROMPT.format(context=context)
 
 
 def generate_narrative(incident: Dict[str, Any]) -> Optional[str]:
     """
-    Generate a short attack narrative for an incident using Hugging Face.
-    Returns the narrative string, or None if generation is unavailable/failed.
+    Generate a structured JSON attack narrative for an incident using Hugging Face.
+    Returns the JSON narrative string, or None if generation is unavailable/failed.
     Never raises.
     """
     client = _get_client()
@@ -124,31 +121,44 @@ def generate_narrative(incident: Dict[str, Any]) -> Optional[str]:
         return None
 
     try:
+        import json
         prompt = _build_prompt(incident)
+        
+        # We append a trailing `{` if response_format="json_object" isn't strictly enforced by HF API for this model
+        # The Qwen model typically supports json output if instructed well.
+        
         response = client.chat_completion(
             model=HF_MODEL,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a cybersecurity incident analyst. Write clear, "
-                        "factual, non-sensational summaries for SOC dashboards."
-                    ),
-                },
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=300,
-            temperature=0.3,
+            max_tokens=800,
+            temperature=0.2,
         )
         narrative = (response.choices[0].message.content or "").strip()
+        
+        # Strip potential markdown formatting if the LLM leaked it
+        if narrative.startswith("```json"):
+            narrative = narrative[7:]
+        if narrative.startswith("```"):
+            narrative = narrative[3:]
+        if narrative.endswith("```"):
+            narrative = narrative[:-3]
+        narrative = narrative.strip()
+        
         if not narrative:
             logger.warning("HuggingFace returned empty narrative for %s",
                            incident.get("incident_id"))
             return None
-        logger.info("Narrative generated for %s (%d chars)",
+            
+        # Verify it parses as JSON
+        json.loads(narrative)
+            
+        logger.info("Structured JSON narrative generated for %s (%d chars)",
                      incident.get("incident_id"), len(narrative))
         return narrative
     except Exception as exc:
         logger.warning("Narrative generation failed for %s: %s",
                        incident.get("incident_id"), exc)
         return None
+

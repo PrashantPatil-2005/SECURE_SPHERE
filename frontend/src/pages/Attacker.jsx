@@ -158,17 +158,26 @@ export default function Attacker() {
 
   useEffect(() => {
     let stop = false;
+    let timer = null;
+    let delay = 1000;
+    const MIN = 1000;
+    const MAX = 15000;
+
     const tick = async () => {
+      if (stop) return;
       try {
         const s = await api.getAttackStatus();
-        if (!stop) setStatus(s || {});
+        if (stop) return;
+        setStatus(s || {});
+        delay = MIN;
       } catch {
-        /* ignore transient */
+        delay = Math.min(delay * 2, MAX);
+      } finally {
+        if (!stop) timer = setTimeout(tick, delay);
       }
     };
     tick();
-    const id = setInterval(tick, 1000);
-    return () => { stop = true; clearInterval(id); };
+    return () => { stop = true; if (timer) clearTimeout(timer); };
   }, []);
 
   const handleLaunch = async (scenario, spd) => {

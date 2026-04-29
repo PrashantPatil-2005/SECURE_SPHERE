@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react
 import * as d3 from 'd3';
 import { Play, Square } from 'lucide-react';
 import { threatLevelColor } from '@/lib/utils';
+import { layerForNode, LAYER_IDS } from '@/components/topology/layerUtils';
 
 const ATTACK_RED = '#ef4444';
 const STEP_MS = 800;
@@ -11,6 +12,21 @@ function linkKey(d) {
   const s = d.source?.id ?? d.source;
   const t = d.target?.id ?? d.target;
   return `${s}->${t}`;
+}
+
+// Curved bezier path between two points. `offset` shifts the control point
+// perpendicular to the midline so parallel edges fan out instead of stacking.
+function edgePath(d) {
+  const sx = d.source.x, sy = d.source.y;
+  const tx = d.target.x, ty = d.target.y;
+  const dx = tx - sx, dy = ty - sy;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  // perpendicular unit vector
+  const px = -dy / len, py = dx / len;
+  const off = d.curveOffset || 0;
+  const mx = (sx + tx) / 2 + px * off;
+  const my = (sy + ty) / 2 + py * off;
+  return `M${sx},${sy} Q${mx},${my} ${tx},${ty}`;
 }
 
 /**
@@ -37,6 +53,10 @@ export default function TopologyGraph({
 
   // Animation state isolated in a ref so scheduled steps don't cause re-renders.
   const animRef = useRef({ timeouts: [], step: 0, active: false });
+
+  // Persistent layout cache: id -> { x, y }. Survives re-renders so live-added
+  // nodes don't shuffle the existing ones around.
+  const layoutRef = useRef(new Map());
 
   const [tooltip, setTooltip] = useState(null);
   const [playing, setPlaying] = useState(false);
@@ -183,11 +203,75 @@ export default function TopologyGraph({
     svg.call(zoom);
     svg.on('click', () => onNodeSelectRef.current?.(null));
 
-    const enriched = nodes.map((n) => ({
-      ...n,
-      risk: riskScores[n.id]?.current_score || n.risk_score || 0,
-      level: riskScores[n.id]?.threat_level || 'normal',
-    }));
+    // Tiered layout with auto-wrap: edge top, app middle, data bottom.
+    // Each tier wraps into multiple rows when node count exceeds what
+    // fits with min spacing — guarantees no overlap regardless of count.
+    // Manually-dragged nodes (cached as dragged:true) keep their spot.
+    const cache = layoutRef.current;
+    const padX = Math.max(60, width * 0.08);
+    const MIN_SPACING = 110;          // node radius 16 + label width budget
+    const ROW_SPACING = 70;           // vertical gap between wrapped rows
+
+    // Tier vertical bands [centerY, halfHeight]
+    const tierBand = {
+      [LAYER_IDS.EDGE]: { center: height * 0.18, halfH: height * 0.10 },
+      [LAYER_IDS.APP]:  { center: height * 0.50, halfH: height * 0.18 },
+      [LAYER_IDS.DATA]: { center: height * 0.82, halfH: height * 0.10 },
+    };
+
+    const tiered = { [LAYER_IDS.EDGE]: [], [LAYER_IDS.APP]: [], [LAYER_IDS.DATA]: [] };
+    nodes.forEach((n) => {
+      const L = layerForNode(n) || LAYER_IDS.APP;
+      tiered[L].push(n);
+    });
+    Object.values(tiered).forEach((arr) =>
+      arr.sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    );
+
+    const positions = new Map();
+    Object.entries(tiered).forEach(([layer, arr]) => {
+      const n = arr.length;
+      if (n === 0) return;
+
+      const usable = Math.max(120, width - padX * 2);
+      const perRow = Math.max(1, Math.floor(usable / MIN_SPACING) + 1);
+      const rows = Math.ceil(n / perRow);
+      const { center, halfH } = tierBand[layer];
+
+      // Distribute rows vertically within tier band, capped by halfH
+      const maxSpan = Math.max(0, halfH * 2 - 20);
+      const rowGap = rows > 1 ? Math.min(ROW_SPACING, maxSpan / (rows - 1)) : 0;
+      const startY = center - ((rows - 1) * rowGap) / 2;
+
+      arr.forEach((node, i) => {
+        const row = Math.floor(i / perRow);
+        const colCount = row === rows - 1 ? n - row * perRow : perRow;
+        const colIdx = i - row * perRow;
+        const step = colCount === 1 ? 0 : usable / (colCount - 1);
+        const xAuto = colCount === 1 ? width / 2 : padX + step * colIdx;
+        const yAuto = startY + row * rowGap;
+
+        const cached = cache.get(node.id);
+        const x = cached?.dragged ? cached.x : xAuto;
+        const y = cached?.dragged ? cached.y : yAuto;
+        positions.set(node.id, { x, y });
+        if (!cached?.dragged) cache.set(node.id, { x, y, dragged: false });
+      });
+    });
+
+
+    const enriched = nodes.map((n) => {
+      const pos = positions.get(n.id) || { x: width / 2, y: height / 2 };
+      return {
+        ...n,
+        risk: riskScores[n.id]?.current_score || n.risk_score || 0,
+        level: riskScores[n.id]?.threat_level || 'normal',
+        x: pos.x,
+        y: pos.y,
+        fx: pos.x,
+        fy: pos.y,
+      };
+    });
 
     const nodeMap = {};
     enriched.forEach((n) => { nodeMap[n.id] = n; });
@@ -199,19 +283,38 @@ export default function TopologyGraph({
         target: typeof e.target === 'string' ? e.target : e.target.id,
       }));
 
-    const sim = d3
-      .forceSimulation(enriched)
-      .force('link', d3.forceLink(links).id((d) => d.id).distance(120))
-      .force('charge', d3.forceManyBody().strength(-400))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide(40));
+    // Assign curve offsets so edges sharing the same node pair fan out,
+    // and same-row edges arc above/below to avoid sitting on each other.
+    const SPREAD = 22;
+    const pairBucket = new Map();
+    links.forEach((l) => {
+      const a = String(l.source), b = String(l.target);
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      const list = pairBucket.get(key) || [];
+      list.push(l);
+      pairBucket.set(key, list);
+    });
+    pairBucket.forEach((list) => {
+      const n = list.length;
+      list.forEach((l, i) => {
+        // center index → 0 offset; siblings spread ±SPREAD
+        const center = (n - 1) / 2;
+        l.curveOffset = (i - center) * SPREAD;
+      });
+    });
+
+    // Static layout: nodes pinned via fx/fy. Sim still exists so link
+    // endpoints reference live node objects (d.source.x etc.) but no
+    // physics forces are applied — graph stays put.
+    const sim = d3.forceSimulation(enriched).stop();
 
     const link = g
       .append('g')
       .attr('class', 'topology-links')
-      .selectAll('line')
+      .attr('fill', 'none')
+      .selectAll('path')
       .data(links)
-      .join('line')
+      .join('path')
       .attr('stroke', '#a855f7')
       .attr('stroke-width', 1.5)
       .attr('stroke-linecap', 'round')
@@ -242,19 +345,15 @@ export default function TopologyGraph({
       .call(
         d3
           .drag()
-          .on('start', (e, d) => {
-            if (!e.active) sim.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
           .on('drag', (e, d) => {
             d.fx = e.x;
             d.fy = e.y;
-          })
-          .on('end', (e, d) => {
-            if (!e.active) sim.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
+            d.x = e.x;
+            d.y = e.y;
+            layoutRef.current.set(d.id, { x: e.x, y: e.y, dragged: true });
+            // Manually re-render edges/nodes since sim is stopped.
+            link.attr('d', edgePath);
+            node.attr('transform', (n) => `translate(${n.x},${n.y})`);
           })
       );
 
@@ -345,14 +444,15 @@ export default function TopologyGraph({
       .attr('font-family', 'Inter, sans-serif')
       .style('pointer-events', 'none');
 
-    sim.on('tick', () => {
-      link
-        .attr('x1', (d) => d.source.x)
-        .attr('y1', (d) => d.source.y)
-        .attr('x2', (d) => d.target.x)
-        .attr('y2', (d) => d.target.y);
-      node.attr('transform', (d) => `translate(${d.x},${d.y})`);
+    // Resolve link endpoints to node objects (d3.forceLink would do this
+    // automatically, but we don't run a sim). Then render once.
+    const nodeById = new Map(enriched.map((n) => [n.id, n]));
+    links.forEach((l) => {
+      if (typeof l.source === 'string') l.source = nodeById.get(l.source) || l.source;
+      if (typeof l.target === 'string') l.target = nodeById.get(l.target) || l.target;
     });
+    link.attr('d', edgePath);
+    node.attr('transform', (d) => `translate(${d.x},${d.y})`);
 
     return () => {
       sim.stop();

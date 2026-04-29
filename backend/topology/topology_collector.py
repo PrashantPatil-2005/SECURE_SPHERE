@@ -131,6 +131,16 @@ def _build_redis() -> redis.Redis:
 _redis: redis.Redis = _build_redis()
 
 # ---------------------------------------------------------------------------
+# Drift detector (Phase 12 completion) — see backend/topology/drift_detector.py
+# ---------------------------------------------------------------------------
+try:
+    from drift_detector import DriftDetector  # type: ignore
+except Exception:
+    from .drift_detector import DriftDetector  # type: ignore
+
+_drift = DriftDetector(_redis)
+
+# ---------------------------------------------------------------------------
 # Docker collector
 # ---------------------------------------------------------------------------
 
@@ -253,7 +263,10 @@ def _pg_conn():
     starts if psycopg2 is unavailable (e.g. during local dev).
     """
     import psycopg2  # local import — keeps startup fast in minimal envs
-    return psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
+    url = os.getenv("DATABASE_URL")
+    if url:
+        return psycopg2.connect(url)
+    return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "database"),
         port=int(os.getenv("POSTGRES_PORT", 5432)),
         dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
@@ -306,6 +319,27 @@ async def _collector_loop() -> None:
                 _last_updated = datetime.utcnow().isoformat() + "Z"
                 _publish_update(fresh)
                 _persist_snapshot(fresh)
+
+                # Phase 12 completion: feed observed services + edges
+                # to the drift detector. Drift events flow to Redis
+                # channel ``topology_drift`` and feed the correlation
+                # engine as supply-chain-attack signals.
+                try:
+                    services_now = list(fresh.keys())
+                    edges_now = [
+                        (e["source"], e["target"]) for e in _graph_edges
+                        if e["source"] in fresh and e["target"] in fresh
+                    ]
+                    drift_events = _drift.observe(services_now, edges_now)
+                    if drift_events:
+                        logger.warning(
+                            "Topology drift: %d event(s) — %s",
+                            len(drift_events),
+                            [e.drift_type for e in drift_events],
+                        )
+                except Exception as exc:
+                    logger.debug("Drift observe failed: %s", exc)
+
                 logger.info("Topology refreshed: %d services", len(fresh))
         except Exception as exc:
             logger.error("Collector loop error: %s", exc, exc_info=True)
@@ -465,6 +499,76 @@ async def add_observed_edge(source: str, target: str, edge_type: str = "observed
         _graph_edges.append(edge)
         logger.info("New observed edge: %s → %s (%s)", source, target, edge_type)
     return {"status": "ok", "source": source, "target": target}
+
+
+@app.get("/topology/drift")
+async def topology_drift(limit: int = 50) -> Dict[str, Any]:
+    """Recent topology drift events (Phase 12).
+
+    Drift events are emitted by ``backend/topology/drift_detector.py`` whenever
+    the live service-graph signature changes — added/removed services,
+    rewired edges, or per-service neighbour changes. Critical drifts are
+    candidate supply-chain-compromise signals for the correlation engine.
+    """
+    limit = max(1, min(int(limit), 200))
+    try:
+        raw = _redis.lrange("topology:drift_events", 0, limit - 1)
+        events = []
+        for r in raw:
+            try:
+                events.append(json.loads(r))
+            except Exception:
+                continue
+        return {
+            "count": len(events),
+            "events": events,
+            "baseline_loaded": _drift._baseline is not None,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"drift unavailable: {exc}")
+
+
+@app.post("/topology/drift/reset")
+async def reset_drift_baseline() -> Dict[str, str]:
+    """Clear the drift baseline. Next collection re-anchors the rolling baseline.
+
+    Use this after an authorised redeploy that introduces new services so the
+    drift detector does not keep flagging them as suspicious.
+    """
+    _drift.reset()
+    try:
+        _redis.delete("topology:drift_events")
+    except Exception:
+        pass
+    return {"status": "ok", "message": "drift baseline reset"}
+
+
+@app.get("/topology/signature")
+async def topology_signature() -> Dict[str, Any]:
+    """Return the current topology fingerprint (service hash, edge hash,
+    per-service neighbour fingerprints). Used by the dashboard to detect
+    when a refetch is required, and by the embedding service to decide
+    whether to re-train Node2Vec."""
+    if not _service_map:
+        raise HTTPException(status_code=503, detail="Topology not yet collected")
+    services = list(_service_map.keys())
+    edges = [
+        (e["source"], e["target"]) for e in _graph_edges
+        if e["source"] in _service_map and e["target"] in _service_map
+    ]
+    try:
+        from drift_detector import fingerprint  # type: ignore
+    except Exception:
+        from .drift_detector import fingerprint  # type: ignore
+    sig = fingerprint(services, edges)
+    return {
+        "service_count": sig.service_count,
+        "edge_count": sig.edge_count,
+        "service_set_hash": sig.service_set_hash,
+        "edge_set_hash": sig.edge_set_hash,
+        "neighbour_signature": sig.neighbour_signature,
+        "captured_at": sig.captured_at,
+    }
 
 
 # ---------------------------------------------------------------------------

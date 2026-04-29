@@ -30,6 +30,7 @@ import threading
 import logging
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
+from typing import Any, Optional
 from uuid import uuid4
 from flask import Flask, jsonify
 
@@ -43,6 +44,64 @@ try:
 except Exception as _kc_err:
     logging.warning("Kill chain module unavailable: %s", _kc_err)
     _KC_AVAILABLE = False
+
+# Redis Streams event bus (Phase 13). Optional — falls back to pub/sub when
+# unavailable so the engine still works on bare-bones Redis without XADD.
+try:
+    from correlation.event_bus import EventBus, PubSubBridge
+    _BUS_AVAILABLE = True
+except Exception:
+    try:
+        from event_bus import EventBus, PubSubBridge  # docker layout
+        _BUS_AVAILABLE = True
+    except Exception as _bus_err:
+        logging.warning("EventBus unavailable, using pub/sub only: %s", _bus_err)
+        _BUS_AVAILABLE = False
+
+try:
+    from anomaly.fingerprinter import BehaviorTracker
+    _ANOMALY_AVAILABLE = True
+except Exception as _an_err:
+    logging.warning("BehaviorTracker unavailable: %s", _an_err)
+    _ANOMALY_AVAILABLE = False
+
+try:
+    from predictor.heuristic import HeuristicPredictor
+    _PREDICTOR_AVAILABLE = True
+except Exception as _pred_err:
+    logging.warning("HeuristicPredictor unavailable: %s", _pred_err)
+    _PREDICTOR_AVAILABLE = False
+
+try:
+    from replay.recorder import ReplayRecorder
+    from replay.player import ReplayPlayer
+    _REPLAY_AVAILABLE = True
+except Exception as _rep_err:
+    logging.warning("Replay engine unavailable: %s", _rep_err)
+    _REPLAY_AVAILABLE = False
+
+try:
+    from rules.dsl import load_rules, RuleEngine
+    _DSL_AVAILABLE = True
+except Exception as _dsl_err:
+    logging.warning("Rule DSL unavailable: %s", _dsl_err)
+    _DSL_AVAILABLE = False
+
+try:
+    from confidence.bayesian import score_chain
+    from explain.counterfactual import explain_chain
+    from explain.diff import diff_chains
+    _EXPLAIN_AVAILABLE = True
+except Exception as _ex_err:
+    logging.warning("Explain layer unavailable: %s", _ex_err)
+    _EXPLAIN_AVAILABLE = False
+
+try:
+    from threat_intel.feed import ThreatIntel
+    _TI_AVAILABLE = True
+except Exception as _ti_err:
+    logging.warning("Threat intel unavailable: %s", _ti_err)
+    _TI_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -64,6 +123,12 @@ REDIS_PORT         = int(os.getenv("REDIS_PORT", 6379))
 CORRELATION_WINDOW = int(os.getenv("CORRELATION_WINDOW", 900))   # 15 min
 RISK_DECAY_RATE    = int(os.getenv("RISK_DECAY_RATE", 5))
 RISK_DECAY_INTERVAL= int(os.getenv("RISK_DECAY_INTERVAL", 60))
+
+# Event bus mode: "pubsub" (legacy), "streams" (new only), "dual" (both — default).
+# Dual mode runs the PubSubBridge so monitors that still publish on the legacy
+# channel keep working while we migrate them one at a time.
+EVENT_BUS_MODE     = os.getenv("EVENT_BUS_MODE", "dual").lower()
+CORRELATION_WORKERS= int(os.getenv("CORRELATION_WORKERS", 1))
 
 # Discord rate-limit: max 1 alert per incident_type per this many seconds
 DISCORD_RATE_LIMIT = 60
@@ -131,6 +196,74 @@ class CorrelationEngine:
 
     def __init__(self) -> None:
         self.connect_redis()
+
+        # Streams bus + legacy pub/sub bridge. In "dual" the bridge mirrors
+        # legacy channel messages into the stream so existing monitors keep
+        # working while we migrate them. process_event is invariant to source.
+        self.bus = None
+        self.bridge = None
+        if _BUS_AVAILABLE and EVENT_BUS_MODE in ("streams", "dual"):
+            try:
+                self.bus = EventBus(self.redis)
+                if EVENT_BUS_MODE == "dual":
+                    self.bridge = PubSubBridge(self.redis, self.bus)
+            except Exception as exc:
+                logger.warning("EventBus init failed, falling back to pub/sub: %s", exc)
+                self.bus = None
+                self.bridge = None
+
+        # Behaviour fingerprinter — anomaly detector that emits its own events
+        # back into the stream so existing rules can react to "this service
+        # is acting weird" without us writing a rule per weirdness shape.
+        self.behavior = None
+        if _ANOMALY_AVAILABLE and os.getenv("BEHAVIOR_FINGERPRINT", "1") != "0":
+            try:
+                self.behavior = BehaviorTracker(self.redis, bus=self.bus)
+            except Exception as exc:
+                logger.warning("BehaviorTracker init failed: %s", exc)
+
+        # Threat-intel feed — populated lazily; lookup is O(1) on Redis sets.
+        self.threat_intel = None
+        if _TI_AVAILABLE and os.getenv("THREAT_INTEL_ENABLED", "1") != "0":
+            try:
+                self.threat_intel = ThreatIntel(self.redis)
+                self.threat_intel.start()
+            except Exception as exc:
+                logger.warning("ThreatIntel init failed: %s", exc)
+
+        # YAML rule engine — runs alongside the hardcoded Python rules. Each
+        # YAML rule produces incidents in the same shape as Python rules so
+        # the rest of the pipeline doesn't care which one fired.
+        self.yaml_rules: Optional[Any] = None
+        if _DSL_AVAILABLE and os.getenv("YAML_RULES_ENABLED", "1") != "0":
+            try:
+                builtin_dir = os.path.join(os.path.dirname(__file__), "..", "rules", "builtin")
+                user_dir = os.getenv("YAML_RULES_DIR", "/app/rules/user")
+                rules_loaded = load_rules([os.path.abspath(builtin_dir), user_dir])
+                if rules_loaded:
+                    self.yaml_rules = RuleEngine(rules_loaded)
+            except Exception as exc:
+                logger.warning("YAML rule load failed: %s", exc)
+
+        # Replay engine — records per-incident frames for the cinema view.
+        self.replay = None
+        self.replay_player = None
+        if _REPLAY_AVAILABLE and os.getenv("REPLAY_ENABLED", "1") != "0":
+            try:
+                self.replay = ReplayRecorder(self.redis, bus=self.bus)
+                self.replay_player = ReplayPlayer(self.redis)
+            except Exception as exc:
+                logger.warning("Replay engine init failed: %s", exc)
+
+        # Next-step predictor (Markov heuristic; TGNN if weights are mounted).
+        self.predictor = None
+        if _PREDICTOR_AVAILABLE and os.getenv("PREDICTOR_ENABLED", "1") != "0":
+            try:
+                self.predictor = HeuristicPredictor(self.redis)
+                trained_on = self.predictor.fit_from_postgres()
+                logger.info("HeuristicPredictor trained on %d chains", trained_on)
+            except Exception as exc:
+                logger.warning("Predictor init failed: %s", exc)
 
         # Initialise PostgreSQL kill-chain schema if module available
         if _KC_AVAILABLE:
@@ -403,6 +536,16 @@ class CorrelationEngine:
         return incident
 
     def publish_incident(self, incident: dict) -> None:
+        # Attach Bayesian confidence + per-stage breakdown so dashboards and
+        # alert rules can rank incidents by posterior P(attack), not just by
+        # rule severity.
+        if _EXPLAIN_AVAILABLE and "confidence" not in incident:
+            try:
+                report = score_chain(incident.get("kill_chain_steps") or [])
+                incident["confidence"] = report.to_dict()
+            except Exception as exc:
+                logger.debug("confidence scoring failed: %s", exc)
+
         js = json.dumps(incident)
         try:
             self.redis.publish("correlated_incidents", js)
@@ -414,6 +557,34 @@ class CorrelationEngine:
             self.redis.ltrim("ws_push_queue", 0, 199)
         except Exception as exc:
             logger.error("Failed to publish incident: %s", exc)
+
+        # Mirror to durable incident stream — survives consumer restarts and
+        # is the source of truth for the Attack Replay Engine.
+        if self.bus is not None:
+            try:
+                self.bus.publish_incident(incident)
+            except Exception as exc:
+                logger.debug("incident stream publish failed: %s", exc)
+
+        # Record a replay frame per incident emission. The triggering event
+        # is the most recent buffer entry — close enough for the cinema view
+        # and avoids threading the actual event into every rule.
+        if self.replay is not None:
+            try:
+                last_event = self.event_buffer[-1] if self.event_buffer else {}
+                self.replay.record_frame(
+                    incident_id=incident.get("incident_id") or str(uuid4()),
+                    triggering_event=last_event,
+                    rule_name=incident.get("incident_type"),
+                    kill_chain_steps=incident.get("kill_chain_steps") or [],
+                    mitre_techniques=incident.get("mitre_techniques") or [],
+                    risk_snapshot={
+                        "score": incident.get("risk_score"),
+                        "level": incident.get("threat_level"),
+                    },
+                )
+            except Exception as exc:
+                logger.debug("replay recorder failed: %s", exc)
 
         self.recent_incidents.append(incident)
         if len(self.recent_incidents) > 50:
@@ -1221,6 +1392,29 @@ class CorrelationEngine:
         # Enrich with topology metadata before correlation
         event = enrich_event(event)
 
+        # Threat-intel tag — surfaces in the dashboard and is keyable from
+        # YAML rules (``threat_intel_match: true``).
+        if self.threat_intel is not None:
+            try:
+                ip = (event.get("source_entity") or {}).get("ip") or event.get("source_ip")
+                if ip and self.threat_intel.lookup(ip):
+                    event["threat_intel_match"] = True
+                    # Bump severity if currently low/medium — TI hits are a real signal
+                    if event.get("severity") in (None, "low", "medium"):
+                        event["severity"] = "high"
+            except Exception:
+                pass
+
+        # Behaviour fingerprinting runs *before* rules so any anomaly events it
+        # emits get consumed in the next iteration (via the stream) — keeps the
+        # "anomaly is just another event" abstraction clean. Skip for events we
+        # ourselves emitted to avoid a feedback loop.
+        if self.behavior is not None and event.get("source_layer") != "behavior-fingerprint":
+            try:
+                self.behavior.observe(event)
+            except Exception as exc:
+                logger.debug("behavior observe failed: %s", exc)
+
         # Browser-layer normalization (Phase 2): browser_monitor publishes a
         # flat source_ip; promote it into the nested source_entity.ip shape so
         # IP-keyed rules and risk scoring keep working uniformly.
@@ -1252,6 +1446,13 @@ class CorrelationEngine:
                     self.publish_incident(incident)
             except Exception as exc:
                 logger.error("Rule %s error: %s", rule.__name__, exc)
+
+        # YAML-defined rules. Same incident shape, so publish_incident is a
+        # no-op surprise to downstream subscribers.
+        if self.yaml_rules is not None:
+            for incident in self.yaml_rules.evaluate(event, buffer_copy):
+                incident.setdefault("incident_id", str(uuid4()))
+                self.publish_incident(incident)
 
         logger.info(
             "[EVENT] %s | %s | %s",
@@ -1295,6 +1496,43 @@ class CorrelationEngine:
                 self.redis.set("latest_summary", json.dumps(summary))
             except Exception as exc:
                 logger.error("Summary loop error: %s", exc)
+
+    def ai_commentary_loop(self) -> None:
+        """Background thread that occasionally generates a 1-sentence AI observation of the system state."""
+        try:
+            from ai.client import generate_completion
+            from ai.prompts import LIVE_COMMENTARY_PROMPT
+        except ImportError:
+            logger.warning("AI modules missing; commentary disabled.")
+            return
+
+        last_count = 0
+        while True:
+            time.sleep(15)  # Every 15 seconds
+            try:
+                with self.buffer_lock:
+                    current_count = self.stats["events_processed"]
+                    if current_count <= last_count:
+                        continue # No new events
+                    last_count = current_count
+                    
+                    recent_events = self.event_buffer[-10:] if self.event_buffer else []
+                    
+                if not recent_events:
+                    continue
+                    
+                # Format simple context
+                events_text = "\n".join([f"[{e.get('timestamp')}] {e.get('source_layer')} - {e.get('event_type')} from {e.get('source_ip')}" for e in recent_events])
+                prompt = LIVE_COMMENTARY_PROMPT.format(events=events_text)
+                
+                commentary = generate_completion(prompt, max_tokens=100, temperature=0.7)
+                if commentary:
+                    msg = {"timestamp": datetime.now().isoformat(), "commentary": commentary}
+                    self.redis.publish("ai_thought_stream", json.dumps(msg))
+                    self.redis.lpush("ai_thought_stream_history", json.dumps(msg))
+                    self.redis.ltrim("ai_thought_stream_history", 0, 49)
+            except Exception as exc:
+                logger.error("AI commentary loop error: %s", exc)
 
     # -----------------------------------------------------------------------
     # Flask routes
@@ -1355,6 +1593,145 @@ class CorrelationEngine:
                 },
             })
 
+        @app.route("/engine/mitre-heatmap")
+        def mitre_heatmap():
+            """ATT&CK heatmap shape: per-tactic rows, per-technique cells with
+            count + last-seen timestamp. Drop-in for the dashboard's MITRE
+            coverage view and the public /paper benchmark figure."""
+            # Static technique→tactic map for ATT&CK for Containers. Keep here
+            # so the engine has zero MITRE-data network calls.
+            T2T = {
+                "T1046": "discovery", "T1595": "reconnaissance",
+                "T1021": "lateral_movement", "T1078": "initial_access",
+                "T1110": "credential_access", "T1110.004": "credential_access",
+                "T1190": "initial_access", "T1003": "credential_access",
+                "T1071": "command_and_control", "T1083": "discovery",
+                "T1530": "collection", "T1048": "exfiltration",
+                "T1195": "initial_access",
+            }
+            heat = defaultdict(lambda: {"techniques": {}, "total": 0})
+            for tech, count in self.stats["mitre_hits"].items():
+                tactic = T2T.get(tech, "unknown")
+                heat[tactic]["techniques"][tech] = count
+                heat[tactic]["total"] += count
+            rows = [
+                {"tactic": tactic, "total": v["total"], "techniques": v["techniques"]}
+                for tactic, v in sorted(heat.items(), key=lambda kv: -kv[1]["total"])
+            ]
+            return jsonify({"status": "success", "data": {"rows": rows, "incidents": self.stats["incidents_created"]}})
+
+        @app.route("/engine/threat-intel")
+        def threat_intel_status():
+            if self.threat_intel is None:
+                return jsonify({"status": "success", "data": {"enabled": False}})
+            return jsonify({"status": "success", "data": {"enabled": True, **self.threat_intel.stats()}})
+
+        @app.route("/engine/threat-intel/refresh", methods=["POST"])
+        def threat_intel_refresh():
+            if self.threat_intel is None:
+                return jsonify({"status": "error", "message": "threat intel disabled"}), 503
+            n = self.threat_intel.refresh_now()
+            return jsonify({"status": "success", "data": {"loaded": n}})
+
+        @app.route("/engine/incident/<incident_id>/explain")
+        def incident_explain(incident_id):
+            if not _EXPLAIN_AVAILABLE:
+                return jsonify({"status": "error", "message": "explain layer unavailable"}), 503
+            inc = next(
+                (i for i in self.recent_incidents if i.get("incident_id") == incident_id),
+                None,
+            )
+            if inc is None:
+                return jsonify({"status": "error", "message": "incident not found"}), 404
+            return jsonify({"status": "success", "data": explain_chain(inc.get("kill_chain_steps") or [])})
+
+        @app.route("/engine/incident/<incident_id>/diff/<other_id>")
+        def incident_diff(incident_id, other_id):
+            if not _EXPLAIN_AVAILABLE:
+                return jsonify({"status": "error", "message": "explain layer unavailable"}), 503
+            by_id = {i.get("incident_id"): i for i in self.recent_incidents}
+            left, right = by_id.get(incident_id), by_id.get(other_id)
+            if not left or not right:
+                return jsonify({"status": "error", "message": "incident(s) not found"}), 404
+            return jsonify({"status": "success", "data": diff_chains(left, right)})
+
+        @app.route("/engine/yaml-rules")
+        def yaml_rules_status():
+            if self.yaml_rules is None:
+                return jsonify({"status": "success", "data": {"enabled": False, "rule_count": 0, "rules": []}})
+            return jsonify({"status": "success", "data": {"enabled": True, **self.yaml_rules.stats()}})
+
+        @app.route("/engine/replays")
+        def replays_index():
+            if self.replay_player is None:
+                return jsonify({"status": "error", "message": "replay disabled"}), 503
+            return jsonify({"status": "success", "data": self.replay_player.list_replays()})
+
+        @app.route("/engine/replay/<incident_id>")
+        def replay_frames(incident_id):
+            if self.replay_player is None:
+                return jsonify({"status": "error", "message": "replay disabled"}), 503
+            return jsonify({"status": "success", "data": self.replay_player.frames(incident_id)})
+
+        @app.route("/engine/replay/<incident_id>/at/<int:step>")
+        def replay_at(incident_id, step):
+            if self.replay_player is None:
+                return jsonify({"status": "error", "message": "replay disabled"}), 503
+            state = self.replay_player.reconstruct_at(incident_id, step)
+            if state is None:
+                return jsonify({"status": "error", "message": "no frames"}), 404
+            return jsonify({"status": "success", "data": state})
+
+        @app.route("/engine/predict-next")
+        def predict_next():
+            """Return next-likely-stage and next-likely-MITRE-techniques for
+            the most recent active incident. Used by the dashboard's
+            "Predicted next move" card."""
+            if self.predictor is None:
+                return jsonify({"status": "error", "message": "predictor disabled"}), 503
+            if not self.recent_incidents:
+                return jsonify({"status": "success", "data": {"prediction": None, "reason": "no active incidents"}})
+            inc = self.recent_incidents[-1]
+            steps = inc.get("kill_chain_steps") or []
+            stage = (steps[-1].get("stage") if steps and isinstance(steps[-1], dict) else None) or "reconnaissance"
+            techs = inc.get("mitre_techniques") or []
+            try:
+                pred = self.predictor.predict(stage, techs)
+            except Exception as exc:
+                return jsonify({"status": "error", "message": str(exc)}), 500
+            return jsonify({"status": "success", "data": {"incident_id": inc.get("incident_id"), "prediction": pred}})
+
+        @app.route("/engine/predictor/refit", methods=["POST"])
+        def predictor_refit():
+            if self.predictor is None:
+                return jsonify({"status": "error", "message": "predictor disabled"}), 503
+            n = self.predictor.fit_from_postgres()
+            return jsonify({"status": "success", "data": {"trained_on": n}})
+
+        @app.route("/engine/anomalies")
+        def anomalies():
+            """Behaviour anomaly snapshot (per-service baseline status) +
+            recent anomaly events. Used by the dashboard's risk heatmap."""
+            recent = []
+            try:
+                raw = self.redis.lrange("behavior:anomalies", 0, 49) or []
+                for r in raw:
+                    try:
+                        recent.append(json.loads(r))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            snap = self.behavior.snapshot() if self.behavior is not None else {}
+            return jsonify({
+                "status": "success",
+                "data": {
+                    "tracked_services": len(snap),
+                    "services": snap,
+                    "recent_anomalies": recent,
+                },
+            })
+
         @app.route("/engine/mttd-report")
         def mttd_report():
             """Return per-incident-type MTTD statistics from PostgreSQL."""
@@ -1410,12 +1787,14 @@ class CorrelationEngine:
     # Entry point
     # -----------------------------------------------------------------------
 
-    def start(self) -> None:
-        logger.info("Starting SecuriSphere Correlation Engine …")
-        threading.Thread(target=self._run_flask,              daemon=True).start()
-        threading.Thread(target=self.decay_risk_scores_loop,  daemon=True).start()
-        threading.Thread(target=self.publish_summary_loop,    daemon=True).start()
+    def _bus_callback(self, event: dict, msg_id: str) -> None:
+        """Adapter: EventBus delivers parsed dicts; process_event handles both."""
+        self.process_event(event)
 
+    def _consume_pubsub_loop(self) -> None:
+        """Legacy pub/sub-only path. Used when EVENT_BUS_MODE=pubsub or the
+        streams bus failed to initialise. Kept verbatim from the prior engine
+        so behaviour is identical when streams are off."""
         while True:
             try:
                 for message in self.pubsub.listen():
@@ -1426,6 +1805,47 @@ class CorrelationEngine:
                 time.sleep(1)
                 self.connect_redis()
 
+    def start(self) -> None:
+        logger.info("Starting SecuriSphere Correlation Engine …")
+        threading.Thread(target=self._run_flask,              daemon=True).start()
+        threading.Thread(target=self.decay_risk_scores_loop,  daemon=True).start()
+        threading.Thread(target=self.publish_summary_loop,    daemon=True).start()
+        threading.Thread(target=self.ai_commentary_loop,      daemon=True).start()
+
+        if self.bus is not None:
+            logger.info("Event bus mode: %s (streams enabled, %d worker(s))",
+                        EVENT_BUS_MODE, CORRELATION_WORKERS)
+            if self.bridge is not None:
+                self.bridge.start()
+            workers = []
+            for i in range(max(1, CORRELATION_WORKERS)):
+                consumer_name = f"engine-{os.getpid()}-{i}"
+                # Each worker gets its own EventBus so it has a unique consumer
+                # name within the shared `correlation` group — XREADGROUP shards
+                # messages across consumers in the same group.
+                worker_bus = EventBus(self.redis, consumer_name=consumer_name) if i > 0 else self.bus
+                t = threading.Thread(
+                    target=worker_bus.consume,
+                    args=(self._bus_callback,),
+                    kwargs={"block_ms": 1000, "batch_size": 32},
+                    daemon=True,
+                    name=f"correlation-worker-{i}",
+                )
+                t.start()
+                workers.append(t)
+            # Block forever; workers run as daemons.
+            for t in workers:
+                t.join()
+        else:
+            logger.info("Event bus mode: pubsub (legacy)")
+            self._consume_pubsub_loop()
+
 
 if __name__ == "__main__":
+    try:
+        from common.logging_config import setup_logging, setup_otel  # type: ignore
+        setup_logging(os.getenv("LOG_LEVEL", "INFO"))
+        setup_otel("securisphere-engine")
+    except Exception as _bs_exc:
+        logger.warning("structured logging / OTel init skipped: %s", _bs_exc)
     CorrelationEngine().start()

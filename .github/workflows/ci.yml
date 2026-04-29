@@ -23,7 +23,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/api/requirements.txt
           pip install -r tests/requirements.txt
-          pip install ruff bandit pip-audit
+          pip install ruff bandit pip-audit pyyaml==6.0.1
+
+      - name: Phase 13 unit tests (pure-Python modules)
+        run: pytest tests/test_phase13_unit.py -q
+
+      - name: Compile-check every backend .py + cli
+        run: |
+          python -m compileall -q backend
+          python -m compileall -q cli
 
       - name: Lint (ruff)
         run: ruff check backend/ attacker/ scripts/ tests/ || true

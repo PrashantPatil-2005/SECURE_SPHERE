@@ -1,0 +1,25 @@
+name: silent_replace_payment
+description: Same service name, swapped neighbours — should fire the topology-drift critical signal
+settle_timeout: 15
+expected_chain: [reconnaissance, lateral_movement]
+events:
+  # Synthesise a topology_drift event for the payment-service. The drift
+  # detector publishes these on Redis channel 'topology_drift'; for the
+  # benchmark we forge the same shape directly into the security_events
+  # channel so the engine sees it with no need for the topology collector
+  # to also be "fooled" — we are testing the rule path, not the drift
+  # detector itself.
+  - event_type: topology_drift
+    severity: critical
+    source_layer: topology-drift
+    source_service_name: payment-service
+    details: { drift_type: neighbour_change }
+    delay_after: 0.5
+
+  - event_type: lateral_movement
+    severity: high
+    source_layer: network
+    source_service_name: payment-service
+    source_entity: { ip: 10.0.0.50 }
+    destination_service: database
+    delay_after: 0.5

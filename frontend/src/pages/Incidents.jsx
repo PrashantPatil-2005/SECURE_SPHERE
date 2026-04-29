@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertTriangle, Play, ChevronDown, ChevronRight, Clock, Target,
-  Activity, StickyNote, Loader2, Network,
+  Activity, StickyNote, Loader2, Network, FileText,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
@@ -66,6 +66,8 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
   const [detail, setDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState('');
+  const [report, setReport] = useState(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   const status = safeString(inc.status) || DEFAULT_STATUS;
   const sev = getSeverityString(inc.severity);
@@ -89,7 +91,41 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
   const toggle = () => {
     const next = !expanded;
     setExpanded(next);
-    if (next) loadDetail();
+    if (next) {
+      loadDetail();
+      fetchExistingReport();
+    }
+  };
+
+  const fetchExistingReport = async () => {
+    try {
+      const res = await fetch(`/api/ai/reports/${inc.incident_id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reports && data.reports.length > 0) {
+          setReport(data.reports[data.reports.length - 1].content);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch existing reports', e);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    setGeneratingReport(true);
+    try {
+      const res = await fetch(`/api/ai/report/${inc.incident_id}`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setReport(data.report);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to generate report', e);
+    } finally {
+      setGeneratingReport(false);
+    }
   };
 
   // Prefer rich step array from drill-down, then inline steps/service_path.
@@ -256,6 +292,22 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
               </div>
             </div>
           )}
+
+          {/* AI Report Section */}
+          <div className="border-t border-base-800 pt-4">
+            <div className="flex justify-between items-center mb-2">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-base-500">AI Incident Report</div>
+              <Button size="sm" variant="outline" onClick={handleGenerateReport} disabled={generatingReport}>
+                {generatingReport ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <FileText className="w-3 h-3 mr-1" />}
+                {generatingReport ? 'Generating...' : report ? 'Regenerate Report' : 'Generate Report'}
+              </Button>
+            </div>
+            {report && (
+              <div className="mt-2 p-3 bg-base-950 rounded-md border border-base-800 text-[11px] font-mono text-base-300 whitespace-pre-wrap overflow-x-auto">
+                {report}
+              </div>
+            )}
+          </div>
 
           {/* Full step table */}
           {loadingDetail ? (

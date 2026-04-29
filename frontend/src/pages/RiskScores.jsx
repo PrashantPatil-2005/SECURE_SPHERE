@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Zap } from 'lucide-react';
+import { Zap, Loader2, Bot } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
 import RiskGauge from '@/components/charts/RiskGauge';
@@ -10,6 +12,29 @@ const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, tr
 
 export default function RiskScores({ riskScores }) {
   const entries = Object.entries(riskScores || {}).filter(([, v]) => v);
+  const [explanations, setExplanations] = useState({});
+  const [loadingExplanations, setLoadingExplanations] = useState({});
+
+  const handleExplain = async (service, score, top_events) => {
+    setLoadingExplanations(prev => ({ ...prev, [service]: true }));
+    try {
+      const res = await fetch('/api/ai/explain_anomaly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service, score, top_events })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setExplanations(prev => ({ ...prev, [service]: data.explanation }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to get explanation', e);
+    } finally {
+      setLoadingExplanations(prev => ({ ...prev, [service]: false }));
+    }
+  };
 
   // Generate synthetic sparkline data per service
   const sparkData = (score) => Array.from({ length: 15 }, (_, i) => ({
@@ -61,12 +86,30 @@ export default function RiskScores({ riskScores }) {
                   {/* Top contributing events */}
                   {data?.top_events?.length > 0 && (
                     <div>
-                      <div className="text-[10px] text-base-500 mb-1 uppercase tracking-wider font-semibold">Top Events</div>
+                      <div className="text-[10px] text-base-500 mb-1 uppercase tracking-wider font-semibold flex items-center justify-between">
+                        <span>Top Events</span>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-5 px-1.5 text-[9px]"
+                          onClick={() => handleExplain(service, score, data.top_events)}
+                          disabled={loadingExplanations[service]}
+                        >
+                          {loadingExplanations[service] ? <Loader2 className="w-2.5 h-2.5 animate-spin mr-1" /> : <Bot className="w-2.5 h-2.5 mr-1" />}
+                          AI Explain
+                        </Button>
+                      </div>
                       {data.top_events.slice(0, 3).map((evt, i) => (
                         <div key={i} className="text-[11px] text-base-400 truncate py-0.5">
                           &bull; {evt}
                         </div>
                       ))}
+                      
+                      {explanations[service] && (
+                        <div className="mt-2 p-2 bg-accent/10 border border-accent/20 rounded-md text-[10px] text-base-300 leading-relaxed italic">
+                          {explanations[service]}
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>

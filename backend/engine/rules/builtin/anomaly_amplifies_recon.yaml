@@ -1,0 +1,20 @@
+name: yaml_anomaly_amplified_recon
+incident_type: behavior_amplified_recon
+severity: critical
+description: Behaviour anomaly + reconnaissance from the same service — supply-chain compromise smell
+mitre_techniques: [T1046, T1195]
+window_seconds: 900
+sequence:
+  - id: behaviour_drift
+    match:
+      event_type: behavior_anomaly
+  - id: recon
+    same:
+      key: source_service_name
+    within_seconds: 600
+    match:
+      any:
+        - event_type: port_scan
+        - event_type: service_enumeration
+        - event_type: directory_enumeration
+explanation: "Service {source} drifted from its behavioural baseline and immediately began reconnaissance"

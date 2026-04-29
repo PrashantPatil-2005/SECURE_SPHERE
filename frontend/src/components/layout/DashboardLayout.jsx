@@ -4,6 +4,8 @@ import { NAV_SHELL, pathForTab } from '@/components/nav/navConfig';
 import SidebarNav from '@/components/nav/SidebarNav';
 import TopNav from '@/components/nav/TopNav';
 import CommandPalette from '@/components/nav/CommandPalette';
+import AIChatPanel from '@/components/ai/AIChatPanel';
+import AIThoughtStream from '@/components/ai/AIThoughtStream';
 import { useCommandPalette } from '@/hooks/useCommandPalette';
 import { CommandPaletteBridgeContext } from '@/contexts/CommandPaletteBridge';
 
@@ -53,6 +55,18 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
 
       <div className="flex-1" />
 
+      {/* AI Analyst Button */}
+      <button
+        type="button"
+        onClick={() => document.dispatchEvent(new CustomEvent('toggle-ai-chat'))}
+        className="group flex h-8 shrink-0 items-center justify-center rounded-md border border-teal-800 bg-teal-950/50 px-3 transition-all duration-200 hover:border-teal-500 hover:bg-teal-900/80"
+        title="AI Analyst Chat"
+      >
+        <span className="text-xs font-semibold text-teal-400 flex items-center gap-1">
+          <span className="text-sm">🤖</span> AI Chat
+        </span>
+      </button>
+      {/* 
       <button
         type="button"
         onClick={onOpenPalette}
@@ -63,7 +77,7 @@ function ChromeBar({ activeTab, connected, lastUpdate, shell, onOpenPalette }) {
           <span className="text-[11px] opacity-70">⌘</span>
           <span>K</span>
         </kbd>
-      </button>
+      </button> */}
 
       <div className={cn('flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase', staleness)}>
         <span
@@ -101,6 +115,13 @@ export default function DashboardLayout({
   children,
 }) {
   const [tip, setTip] = useState('');
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => setIsAiChatOpen(prev => !prev);
+    document.addEventListener('toggle-ai-chat', handleToggle);
+    return () => document.removeEventListener('toggle-ai-chat', handleToggle);
+  }, []);
 
   useEffect(() => {
     if (!tip) return;
@@ -171,6 +192,8 @@ export default function DashboardLayout({
               </div>
             )}
 
+            {<AIThoughtStream />}
+
             {toolbar}
 
             <main className="flex-1 overflow-y-auto p-6 transition-colors duration-200">{children}</main>
@@ -191,6 +214,8 @@ export default function DashboardLayout({
           onInputKeyDown={palette.onKeyDown}
           runIndex={palette.runIndex}
         />
+
+        <AIChatPanel isOpen={isAiChatOpen} onClose={() => setIsAiChatOpen(false)} />
 
         {tip && (
           <div className="fixed bottom-14 left-1/2 z-[190] max-w-md -translate-x-1/2 rounded-md border border-base-800 bg-base-900 px-4 py-2 font-mono text-[11px] text-base-300 shadow-lg transition-colors duration-200">

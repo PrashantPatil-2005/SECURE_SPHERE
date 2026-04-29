@@ -6,6 +6,52 @@ import { generateFullMockData } from '@/lib/mock-data';
 const MAX_EVENTS = 200;
 const MAX_INCIDENTS = 100;
 
+// Live-merge event into topology so graph reacts during attack
+// without waiting for next 15s topology poll. Adds missing nodes/edges
+// derived from source_entity/destination_entity service names and bumps
+// per-node events_count so risk styling can react.
+function mergeEventIntoTopology(prev, ev) {
+  const src = ev?.source_entity?.service;
+  const dst = ev?.destination_entity?.service;
+  if (!src && !dst) return prev;
+
+  const nodes = (prev.nodes || []).slice();
+  const edges = (prev.edges || []).slice();
+  const byId = new Map(nodes.map((n, i) => [n.id, i]));
+
+  const ensureNode = (name) => {
+    if (!name) return;
+    if (byId.has(name)) {
+      const i = byId.get(name);
+      nodes[i] = { ...nodes[i], events_count: (nodes[i].events_count || 0) + 1, last_event_ts: Date.now() };
+      return;
+    }
+    nodes.push({
+      id: name,
+      name,
+      type: 'service',
+      risk_score: 0,
+      status: 'running',
+      events_count: 1,
+      last_event_ts: Date.now(),
+    });
+    byId.set(name, nodes.length - 1);
+  };
+  ensureNode(src);
+  ensureNode(dst);
+
+  if (src && dst && src !== dst) {
+    const exists = edges.some((e) => {
+      const s = e.source?.id ?? e.source;
+      const t = e.target?.id ?? e.target;
+      return s === src && t === dst;
+    });
+    if (!exists) edges.push({ source: src, target: dst });
+  }
+
+  return { ...prev, nodes, edges };
+}
+
 export function useRealtime() {
   const [events, setEvents] = useState([]);
   const [incidents, setIncidents] = useState([]);
@@ -95,6 +141,7 @@ export function useRealtime() {
       },
       onEvent: (ev) => {
         setEvents(prev => [ev, ...prev].slice(0, MAX_EVENTS));
+        setTopology(prev => mergeEventIntoTopology(prev, ev));
         touch();
       },
       onIncident: (inc) => {
@@ -106,6 +153,23 @@ export function useRealtime() {
           }
           return [inc, ...prev].slice(0, MAX_INCIDENTS);
         });
+        // Splice incident's service_path into topology so the chain shows
+        // immediately even if individual events were dropped/missed.
+        const path = Array.isArray(inc?.service_path) ? inc.service_path : [];
+        if (path.length > 1) {
+          setTopology(prev => {
+            let next = prev;
+            for (let i = 0; i < path.length - 1; i++) {
+              next = mergeEventIntoTopology(next, {
+                source_entity: { service: path[i] },
+                destination_entity: { service: path[i + 1] },
+              });
+            }
+            return next;
+          });
+        }
+        // Pull fresh authoritative topology in the background.
+        api.getTopology().then((t) => t && setTopology(t)).catch(() => {});
         touch();
       },
       onRiskUpdate: (data) => {

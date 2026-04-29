@@ -296,8 +296,8 @@ services:
 
   correlation-engine:
     build:
-      context: ./backend/engine
-      dockerfile: correlation/Dockerfile
+      context: ./backend
+      dockerfile: engine/correlation/Dockerfile
     container_name: securisphere-correlator
     ports:
       - "5070:5070"

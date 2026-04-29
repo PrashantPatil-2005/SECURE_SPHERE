@@ -83,6 +83,7 @@ export const NAV_ITEMS = [
   { id: 'topology', label: 'Topology', path: '/topology', section: 'infra' },
   { id: 'risk', label: 'Risk', path: '/risk', section: 'analysis' },
   { id: 'mitre', label: 'MITRE', path: '/mitre', section: 'security' },
+  { id: 'replay', label: 'Replay', path: '/replay', section: 'security' },
   { id: 'system', label: 'System', path: '/system', section: 'system' },
 ];
 

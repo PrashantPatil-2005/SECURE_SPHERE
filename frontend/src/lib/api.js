@@ -1,7 +1,29 @@
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
+function authToken() {
+  try {
+    return (
+      localStorage.getItem('securisphere_token') ||
+      sessionStorage.getItem('securisphere_token') ||
+      ''
+    );
+  } catch {
+    return '';
+  }
+}
+
+// Wrapped fetch — auto-injects Authorization: Bearer <token> on every call.
+// Use this everywhere instead of raw fetch so backend `token_required`
+// endpoints don't 401.
+function authFetch(input, init = {}) {
+  const t = authToken();
+  const headers = new Headers(init.headers || {});
+  if (t && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${t}`);
+  return fetch(input, { ...init, headers });
+}
+
 async function request(path) {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await authFetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
   const json = await res.json();
   return json.data ?? json;
@@ -48,7 +70,7 @@ export const api = {
   getSystemStatus: () => request('/api/system/status'),
   getProxyConfig: () => request('/api/config/proxy'),
   setProxyConfig: (payload) =>
-    fetch(`${BASE}/api/config/proxy`, {
+    authFetch(`${BASE}/api/config/proxy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -68,39 +90,59 @@ export const api = {
 
   // Raw response (keeps `source` + top-level `data` array) — don't unwrap via request()
   getMttdReport: () =>
-    fetch(`${BASE}/api/mttd/report`).then(r => r.json()),
+    authFetch(`${BASE}/api/mttd/report`).then(r => r.json()),
 
   simulateAttack: (scenario) =>
-    fetch(`${BASE}/api/attack/simulate`, {
+    authFetch(`${BASE}/api/attack/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenario }),
     }).then(r => r.json()),
 
   runAttack: (scenario, speed = 'demo') =>
-    fetch(`${BASE}/api/attack/run`, {
+    authFetch(`${BASE}/api/attack/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenario, speed }),
     }).then(r => r.json()),
 
   getAttackStatus: () =>
-    fetch(`${BASE}/api/attack/status`).then(r => r.json()),
+    authFetch(`${BASE}/api/attack/status`).then(r => r.json()),
 
   clearEvents: () =>
-    fetch(`${BASE}/api/events/clear`, { method: 'POST' }).then(r => r.json()),
+    authFetch(`${BASE}/api/events/clear`, { method: 'POST' }).then(r => r.json()),
 
   updateIncidentStatus: (id, status, note = '') =>
-    fetch(`${BASE}/api/incidents/${id}/status`, {
+    authFetch(`${BASE}/api/incidents/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, note }),
     }).then(r => r.json()),
 
+  // login does NOT use authFetch — no token yet at login time
   login: (username, password) =>
     fetch(`${BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }).then(r => r.json()),
+
+  // Engine endpoints (Phase 13). The engine listens on :5070; routed through
+  // backend /api/engine/* if proxied, else direct.
+  getReplaysIndex: () =>
+    authFetch(`${BASE}/api/engine/replays`).then(r => r.json()).then(j => j.data ?? j),
+  getReplayFrames: (incidentId) =>
+    authFetch(`${BASE}/api/engine/replay/${encodeURIComponent(incidentId)}`).then(r => r.json()).then(j => j.data ?? j),
+  getMitreHeatmap: () =>
+    authFetch(`${BASE}/api/engine/mitre-heatmap`).then(r => r.json()).then(j => j.data ?? j),
+  getPredictNext: () =>
+    authFetch(`${BASE}/api/engine/predict-next`).then(r => r.json()).then(j => j.data ?? j),
+  getEngineAnomalies: () =>
+    authFetch(`${BASE}/api/engine/anomalies`).then(r => r.json()).then(j => j.data ?? j),
+  getYamlRules: () =>
+    authFetch(`${BASE}/api/engine/yaml-rules`).then(r => r.json()).then(j => j.data ?? j),
+  getThreatIntelStatus: () =>
+    authFetch(`${BASE}/api/engine/threat-intel`).then(r => r.json()).then(j => j.data ?? j),
+  getIncidentExplain: (incidentId) =>
+    authFetch(`${BASE}/api/engine/incident/${encodeURIComponent(incidentId)}/explain`).then(r => r.json()).then(j => j.data ?? j),
 };

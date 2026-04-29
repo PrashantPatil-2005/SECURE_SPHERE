@@ -1,0 +1,35 @@
+name: recon_to_exfil_stable
+description: Baseline kill chain (recon → exploit → lateral → exfil), no churn
+settle_timeout: 12
+expected_chain: [reconnaissance, exploitation, lateral_movement, exfiltration]
+events:
+  - event_type: port_scan
+    severity: low
+    source_layer: network
+    source_service_name: attacker-pod
+    source_entity: { ip: 10.0.0.99 }
+    delay_after: 1.0
+
+  - event_type: sql_injection_attempt
+    severity: high
+    source_layer: api
+    source_service_name: attacker-pod
+    source_entity: { ip: 10.0.0.99 }
+    destination_service: api-server
+    delay_after: 1.0
+
+  - event_type: lateral_movement
+    severity: high
+    source_layer: network
+    source_service_name: attacker-pod
+    source_entity: { ip: 10.0.0.99 }
+    destination_service: database
+    delay_after: 1.0
+
+  - event_type: data_exfiltration
+    severity: critical
+    source_layer: network
+    source_service_name: attacker-pod
+    source_entity: { ip: 10.0.0.99 }
+    destination_service: external
+    delay_after: 0.5

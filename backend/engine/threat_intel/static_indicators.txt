@@ -1,0 +1,8 @@
+# Demo-lab static threat indicators. Used when no live feed is configured.
+# Operators replace this with real feeds via THREAT_INTEL_FEEDS env.
+# Format: one IP per line, lines starting with # are comments.
+185.220.101.1
+185.220.102.1
+194.55.224.0
+198.51.100.13
+203.0.113.55

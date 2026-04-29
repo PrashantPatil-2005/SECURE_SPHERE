@@ -1,0 +1,20 @@
+name: yaml_topology_drift_to_lateral
+incident_type: drift_then_lateral
+severity: critical
+description: Topology drift on a service immediately followed by lateral movement from it
+mitre_techniques: [T1195, T1021]
+window_seconds: 1800
+sequence:
+  - id: drift
+    match:
+      event_type: topology_drift
+  - id: lateral
+    same:
+      key: source_service_name
+    within_seconds: 900
+    match:
+      any:
+        - event_type: lateral_movement
+        - event_type: unauthorized_access
+        - event_type: privilege_escalation
+explanation: "Service {source} changed its topology fingerprint and then attempted lateral movement"

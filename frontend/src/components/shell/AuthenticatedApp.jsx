@@ -14,6 +14,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import Header from '@/components/layout/Header';
 import StatusBar from '@/components/layout/StatusBar';
 import TweaksPanel from '@/components/shell/TweaksPanel';
+import IncidentToaster from '@/components/notifications/IncidentToaster';
 import { Skeleton } from '@/components/ui/Spinner';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ import RiskScores from '@/pages/RiskScores';
 import System from '@/pages/System';
 import Mitre from '@/pages/Mitre';
 import Intro from '@/pages/Intro';
+import Replay from '@/pages/Replay';
 
 function isTypingTarget(el) {
   if (!el || !(el instanceof Element)) return false;
@@ -226,6 +228,7 @@ export default function AuthenticatedApp() {
               />
               <Route path="/risk" element={<RiskScores riskScores={riskScores} />} />
               <Route path="/mitre" element={<Mitre />} />
+              <Route path="/replay" element={<Replay />} />
               <Route path="/system" element={<System systemStatus={systemStatus} onRefresh={refetch} />} />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -235,6 +238,8 @@ export default function AuthenticatedApp() {
       </DashboardLayout>
 
       <TweaksPanel badges={{ events: events.length, incidents: incidents.length }} />
+
+      <IncidentToaster incidents={incidents} />
     </div>
   );
 }

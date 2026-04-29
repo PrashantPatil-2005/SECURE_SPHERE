@@ -5,12 +5,13 @@ WORKDIR /app
 # Install curl for health check
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies (requirements.txt is in correlation/)
-COPY correlation/requirements.txt .
+# Install dependencies (requirements.txt is in engine/correlation/)
+COPY engine/correlation/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire engine directory (correlation, kill_chain, narration)
-COPY . .
+# Copy the entire engine directory (correlation, kill_chain, narration) and ai directory
+COPY engine/ .
+COPY ai/ ./ai/
 
 # Create log directory
 RUN mkdir -p /var/log/securisphere
