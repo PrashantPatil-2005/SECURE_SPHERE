@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState, useMemo } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRealtime } from '@/hooks/use-realtime';
@@ -15,6 +15,12 @@ import Header from '@/components/layout/Header';
 import StatusBar from '@/components/layout/StatusBar';
 import TweaksPanel from '@/components/shell/TweaksPanel';
 import IncidentToaster from '@/components/notifications/IncidentToaster';
+import CriticalAlertModal from '@/components/notifications/CriticalAlertModal';
+import NotificationCenter from '@/components/notifications/NotificationCenter';
+import CommandPalette from '@/components/nav/CommandPalette';
+import { CommandPaletteBridgeContext } from '@/contexts/CommandPaletteBridge';
+import { useCommandPalette } from '@/hooks/useCommandPalette';
+import { useToast } from '@/components/ui/Toaster';
 import { Skeleton } from '@/components/ui/Spinner';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -28,6 +34,7 @@ import System from '@/pages/System';
 import Mitre from '@/pages/Mitre';
 import Intro from '@/pages/Intro';
 import Replay from '@/pages/Replay';
+import Settings from '@/pages/Settings';
 
 function isTypingTarget(el) {
   if (!el || !(el instanceof Element)) return false;
@@ -38,25 +45,47 @@ function isTypingTarget(el) {
   return false;
 }
 
-export default function AuthenticatedApp() {
+export default function AuthenticatedApp({ onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = tabIdFromPath(location.pathname);
+  const toast = useToast();
+
+  const handleLogout = useCallback(async () => {
+    if (!window.confirm('Sign out of SecuriSphere?')) return;
+    try { await api.logout(); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem('securisphere_token');
+      sessionStorage.removeItem('securisphere_token');
+    } catch { /* ignore */ }
+    onLogout?.();
+    navigate('/login', { replace: true });
+  }, [onLogout, navigate]);
 
   const theme = useAppStore((s) => s.theme);
   const density = useAppStore((s) => s.density);
   const ann = useAppStore((s) => s.ann);
   const nav = useAppStore((s) => s.nav);
+  const soundEnabled = useAppStore((s) => s.soundEnabled);
   const toggleTweaks = useAppStore((s) => s.toggleTweaks);
   const toggleDensity = useAppStore((s) => s.toggleDensity);
   const toggleAnn = useAppStore((s) => s.toggleAnn);
   const toggleTheme = useAppStore((s) => s.toggleTheme);
+  const toggleSound = useAppStore((s) => s.toggleSound);
 
   const {
     events, incidents, riskScores, metrics, timeline,
     topology, systemStatus, connected, loading, lastUpdate,
     usingMock, refetch, setEvents, setIncidents,
   } = useRealtime();
+
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [seenCount, setSeenCount] = useState(0);
+  const unreadCount = Math.max(0, incidents.length - seenCount);
+
+  useEffect(() => {
+    if (notifOpen) setSeenCount(incidents.length);
+  }, [notifOpen, incidents.length]);
 
   useEffect(() => {
     try {
@@ -83,6 +112,76 @@ export default function AuthenticatedApp() {
   }, [refetch, setEvents, setIncidents]);
 
   const goTab = useCallback((id) => navigate(pathForTab(id)), [navigate]);
+
+  const extraPaletteCommands = useMemo(() => ([
+    {
+      id: 'toggle-theme',
+      section: 'Preferences',
+      label: `Toggle theme (${theme === 'dark' ? 'light' : 'dark'})`,
+      detail: 'Switch between light and dark.',
+      keywords: 'theme dark light mode appearance',
+      run: () => { toggleTheme(); toast.info(`Theme: ${theme === 'dark' ? 'light' : 'dark'}`); },
+    },
+    {
+      id: 'toggle-sound',
+      section: 'Preferences',
+      label: `${soundEnabled ? 'Mute' : 'Unmute'} critical alert sound`,
+      detail: 'Synth chime on critical incidents.',
+      keywords: 'sound mute audio alert chime',
+      run: () => { toggleSound(); toast.info(`Sound ${soundEnabled ? 'muted' : 'on'}`); },
+    },
+    {
+      id: 'toggle-density',
+      section: 'Preferences',
+      label: 'Toggle density (comfy ⇄ compact)',
+      detail: 'Adjust spacing.',
+      keywords: 'density compact comfy spacing layout',
+      run: () => toggleDensity(),
+    },
+    {
+      id: 'open-notifications',
+      section: 'Actions',
+      label: 'Open notification center',
+      detail: 'Drawer with active alerts.',
+      keywords: 'notifications alerts bell drawer',
+      run: () => setNotifOpen(true),
+    },
+    {
+      id: 'go-settings',
+      section: 'Navigate',
+      label: 'Go to Settings',
+      detail: '/settings',
+      keywords: 'settings preferences profile config',
+      run: () => navigate('/settings'),
+    },
+    {
+      id: 'go-attacker',
+      section: 'Navigate',
+      label: 'Open Attacker console',
+      detail: '/attacker',
+      keywords: 'attacker red team console',
+      run: () => navigate('/attacker'),
+    },
+    {
+      id: 'logout',
+      section: 'Account',
+      label: 'Sign out',
+      detail: 'End session and return to login.',
+      keywords: 'logout signout exit quit',
+      run: () => handleLogout(),
+    },
+  ]), [theme, soundEnabled, toggleTheme, toggleSound, toggleDensity, navigate, handleLogout, toast]);
+
+  const palette = useCommandPalette({
+    onNavigate: goTab,
+    onToast: (msg) => toast.info(msg),
+    extraCommands: extraPaletteCommands,
+  });
+
+  const bridgeValue = useMemo(
+    () => ({ openPalette: () => palette.setOpen(true) }),
+    [palette]
+  );
 
   useEffect(() => {
     const handler = (e) => {
@@ -157,89 +256,117 @@ export default function AuthenticatedApp() {
   }
 
   return (
-    <div
-      className={cn(
-        'min-h-screen bg-base-950',
-        density === 'compact' && 'text-[13px] leading-snug',
-        ann === 'on' && 'show-annotations'
-      )}
-    >
-      <DashboardLayout
-        shell={nav}
-        activeTab={activeTab}
-        onTabChange={goTab}
-        badges={{ events: events.length, incidents: incidents.length }}
-        connected={connected}
-        lastUpdate={lastUpdate}
-        onProfileClick={() => navigate('/system')}
-        toolbar={
-          <Header
-            incidentCount={incidents.length}
-            incidents={incidents}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-            onRefresh={refetch}
-            onClear={handleClear}
-            onProfileClick={() => navigate('/system')}
-            onNavigate={navigate}
-          />
-        }
-        statusBar={
-          <StatusBar
-            connected={connected}
-            lastUpdate={lastUpdate}
-            eventCount={events.length}
-            incidentCount={incidents.length}
-            usingMock={usingMock}
-          />
-        }
+    <CommandPaletteBridgeContext.Provider value={bridgeValue}>
+      <div
+        className={cn(
+          'min-h-screen bg-base-950',
+          density === 'compact' && 'text-[13px] leading-snug',
+          ann === 'on' && 'show-annotations'
+        )}
       >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.18 }}
-          >
-            <Routes>
-              <Route path="/intro" element={<Intro />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <Dashboard
-                    events={events}
-                    incidents={incidents}
-                    metrics={metrics}
-                    timeline={timeline}
-                    riskScores={riskScores}
-                    topology={topology}
-                  />
-                }
-              />
-              <Route path="/events" element={<Events events={events} />} />
-              <Route
-                path="/incidents"
-                element={<Incidents incidents={incidents} onReplayRequest={() => navigate('/topology')} />}
-              />
-              <Route
-                path="/topology"
-                element={<Topology topology={topology} riskScores={riskScores} incidents={incidents} />}
-              />
-              <Route path="/risk" element={<RiskScores riskScores={riskScores} />} />
-              <Route path="/mitre" element={<Mitre />} />
-              <Route path="/replay" element={<Replay />} />
-              <Route path="/system" element={<System systemStatus={systemStatus} onRefresh={refetch} />} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </motion.div>
-        </AnimatePresence>
-      </DashboardLayout>
+        <DashboardLayout
+          shell={nav}
+          activeTab={activeTab}
+          onTabChange={goTab}
+          badges={{ events: events.length, incidents: incidents.length }}
+          connected={connected}
+          lastUpdate={lastUpdate}
+          onProfileClick={() => navigate('/system')}
+          toolbar={
+            <Header
+              incidentCount={incidents.length}
+              unreadCount={unreadCount}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              onRefresh={refetch}
+              onClear={handleClear}
+              onProfileClick={() => navigate('/system')}
+              onNavigate={navigate}
+              onLogout={handleLogout}
+              onOpenNotifications={() => setNotifOpen(true)}
+            />
+          }
+          statusBar={
+            <StatusBar
+              connected={connected}
+              lastUpdate={lastUpdate}
+              eventCount={events.length}
+              incidentCount={incidents.length}
+              usingMock={usingMock}
+            />
+          }
+        >
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+            >
+              <Routes>
+                <Route path="/intro" element={<Intro />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <Dashboard
+                      events={events}
+                      incidents={incidents}
+                      metrics={metrics}
+                      timeline={timeline}
+                      riskScores={riskScores}
+                      topology={topology}
+                    />
+                  }
+                />
+                <Route path="/events" element={<Events events={events} />} />
+                <Route
+                  path="/incidents"
+                  element={<Incidents incidents={incidents} onReplayRequest={() => navigate('/topology')} />}
+                />
+                <Route
+                  path="/topology"
+                  element={<Topology topology={topology} riskScores={riskScores} incidents={incidents} />}
+                />
+                <Route path="/risk" element={<RiskScores riskScores={riskScores} />} />
+                <Route path="/mitre" element={<Mitre />} />
+                <Route path="/replay" element={<Replay />} />
+                <Route path="/system" element={<System systemStatus={systemStatus} onRefresh={refetch} />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+        </DashboardLayout>
 
-      <TweaksPanel badges={{ events: events.length, incidents: incidents.length }} />
+        <TweaksPanel badges={{ events: events.length, incidents: incidents.length }} />
 
-      <IncidentToaster incidents={incidents} />
-    </div>
+        <IncidentToaster incidents={incidents} />
+        <CriticalAlertModal incidents={incidents} />
+
+        <NotificationCenter
+          open={notifOpen}
+          onClose={() => setNotifOpen(false)}
+          incidents={incidents}
+          onNavigate={(p) => navigate(p)}
+          onMarkAllSeen={() => setSeenCount(incidents.length)}
+          onClear={handleClear}
+        />
+
+        <CommandPalette
+          open={palette.open}
+          onClose={() => palette.setOpen(false)}
+          query={palette.query}
+          onQueryChange={palette.setQuery}
+          filtered={palette.filtered}
+          highlight={palette.highlight}
+          onHighlightChange={palette.setHighlight}
+          inputRef={palette.inputRef}
+          onInputKeyDown={palette.onKeyDown}
+          runIndex={palette.runIndex}
+        />
+      </div>
+    </CommandPaletteBridgeContext.Provider>
   );
 }

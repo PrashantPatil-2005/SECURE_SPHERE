@@ -127,6 +127,25 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }).then(r => r.json()),
 
+  register: (username, email, password) =>
+    fetch(`${BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password }),
+    }).then(r => r.json()),
+
+  logout: () =>
+    authFetch(`${BASE}/api/auth/logout`, { method: 'POST' })
+      .then(r => r.json())
+      .catch(() => ({ status: 'error' })),
+
+  forgotPassword: (email) =>
+    fetch(`${BASE}/api/auth/forgot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    }).then(r => r.json()),
+
   // Engine endpoints (Phase 13). The engine listens on :5070; routed through
   // backend /api/engine/* if proxied, else direct.
   getReplaysIndex: () =>

@@ -13,9 +13,11 @@ Security:
 """
 
 import os
+import re
 import logging
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from threading import Lock
 
 import jwt
 import psycopg2
@@ -34,6 +36,24 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "1"))
 FLASK_ENV = os.getenv("FLASK_ENV", "production").lower()
 ALLOW_PLAINTEXT_LOGIN = os.getenv("ALLOW_PLAINTEXT_LOGIN", "0") == "1"
+ALLOW_PUBLIC_REGISTRATION = os.getenv("ALLOW_PUBLIC_REGISTRATION", "1") == "1"
+
+# In-memory token blocklist for /logout. Process-local; fine for single worker.
+_blocklist: set[str] = set()
+_blocklist_lock = Lock()
+
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _validate_password(pw: str):
+    if len(pw) < 8:
+        return "Password must be at least 8 characters"
+    if not re.search(r"[A-Za-z]", pw):
+        return "Password must contain at least one letter"
+    if not re.search(r"\d", pw):
+        return "Password must contain at least one digit"
+    return None
 
 if not JWT_SECRET or len(JWT_SECRET) < 16:
     if FLASK_ENV == "production":
@@ -188,6 +208,9 @@ def _generate_token(user_row):
 
 def _decode_token(token):
     try:
+        with _blocklist_lock:
+            if token in _blocklist:
+                return None
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
@@ -331,3 +354,87 @@ def me():
         "username": user["username"],
         "role": user["role"],
     }})
+
+
+@auth_bp.route("/register", methods=["POST"])
+def register():
+    """Create a new user account. Hashed password, default role 'user'."""
+    if not ALLOW_PUBLIC_REGISTRATION:
+        return jsonify({"status": "error", "message": "Public registration is disabled"}), 403
+
+    _ensure_auth_schema()
+
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"status": "error", "message": "Request body must be JSON"}), 400
+
+    username = (body.get("username") or "").strip()
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+
+    if not USERNAME_RE.match(username):
+        return jsonify({"status": "error", "message": "Username must be 3-32 chars (letters, digits, _.-)"}), 400
+    if not EMAIL_RE.match(email):
+        return jsonify({"status": "error", "message": "Invalid email address"}), 400
+    pw_err = _validate_password(password)
+    if pw_err:
+        return jsonify({"status": "error", "message": pw_err}), 400
+
+    conn = None
+    try:
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
+                if cur.fetchone():
+                    return jsonify({"status": "error", "message": "Username or email already in use"}), 409
+                cur.execute(
+                    "INSERT INTO users (username, email, password_hash, role) "
+                    "VALUES (%s, %s, %s, 'user') RETURNING id, username, role",
+                    (username, email, generate_password_hash(password)),
+                )
+                row = cur.fetchone()
+                user_row = {"id": row[0], "username": row[1], "role": row[2]}
+    except psycopg2.Error as db_err:
+        logger.error("Database error during registration: %s", db_err)
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    token = _generate_token(user_row)
+    logger.info("Registered new user '%s'", username)
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "token": token,
+        "user": user_row,
+    }), 201
+
+
+@auth_bp.route("/logout", methods=["POST"])
+@token_required
+def logout():
+    """Revoke the current bearer token."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+    if token:
+        with _blocklist_lock:
+            _blocklist.add(token)
+            # Cap blocklist size to avoid unbounded growth.
+            if len(_blocklist) > 10000:
+                _blocklist.clear()
+    return jsonify({"status": "success", "success": True})
+
+
+@auth_bp.route("/forgot", methods=["POST"])
+def forgot():
+    """Stub forgot-password. Always returns 200 to avoid user enumeration."""
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if email:
+        logger.info("Password reset requested for %s (no-op stub)", email)
+    return jsonify({
+        "status": "success",
+        "message": "If that email exists, a reset link has been sent.",
+    })

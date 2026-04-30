@@ -5,8 +5,9 @@ import { NAV_ITEMS } from '@/components/nav/navConfig';
  * @param {object} opts
  * @param {(tabId: string) => void} opts.onNavigate
  * @param {(message: string) => void} [opts.onToast] — optional feedback for filter/action stubs
+ * @param {Array<{id:string,section:string,label:string,detail?:string,keywords?:string,run:Function}>} [opts.extraCommands]
  */
-export function useCommandPalette({ onNavigate, onToast }) {
+export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -84,8 +85,19 @@ export function useCommandPalette({ onNavigate, onToast }) {
       },
     ];
 
-    return [...navCmds, ...filterCmds, ...actionCmds];
-  }, [onNavigate, onToast]);
+    const wrapped = (extraCommands || []).map((c) => ({
+      ...c,
+      run: () => {
+        try { c.run?.(); } finally {
+          setOpen(false);
+          setQuery('');
+          setHighlight(0);
+        }
+      },
+    }));
+
+    return [...navCmds, ...wrapped, ...filterCmds, ...actionCmds];
+  }, [onNavigate, onToast, extraCommands]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

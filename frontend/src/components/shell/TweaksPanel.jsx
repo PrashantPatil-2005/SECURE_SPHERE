@@ -1,4 +1,4 @@
-import { X, Moon, Sun, Rows3, LayoutList, Eye, EyeOff, PanelLeft, PanelTop, Command } from 'lucide-react';
+import { X, Moon, Sun, Rows3, LayoutList, Eye, EyeOff, PanelLeft, PanelTop, Command, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/useAppStore';
@@ -21,6 +21,10 @@ export default function TweaksPanel({ badges = {} }) {
   const setNav = useAppStore((s) => s.setNav);
   const kc = useAppStore((s) => s.kc);
   const setKc = useAppStore((s) => s.setKc);
+  const soundEnabled = useAppStore((s) => s.soundEnabled);
+  const toggleSound = useAppStore((s) => s.toggleSound);
+  const soundVolume = useAppStore((s) => s.soundVolume);
+  const setSoundVolume = useAppStore((s) => s.setSoundVolume);
 
   if (!open) return null;
 
@@ -138,6 +142,36 @@ export default function TweaksPanel({ badges = {} }) {
                 </Button>
               ))}
             </div>
+          </section>
+
+          <section className={panel}>
+            <div className={label}>Critical alert sound</div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full justify-center gap-2 font-mono text-xs"
+              onClick={() => toggleSound()}
+            >
+              {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+              {soundEnabled ? 'Enabled' : 'Muted'}
+            </Button>
+            {soundEnabled && (
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="font-mono text-[10px] text-base-500">Volume</span>
+                  <span className="font-mono text-[10px] tabular-nums text-base-400">{Math.round(soundVolume * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={soundVolume}
+                  onChange={(e) => setSoundVolume(e.target.value)}
+                  className="w-full accent-accent"
+                />
+              </div>
+            )}
           </section>
 
           <section className={panel}>

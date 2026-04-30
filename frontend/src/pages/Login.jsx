@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Shield, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 
 export default function Login({ onLogin }) {
@@ -115,6 +116,15 @@ export default function Login({ onLogin }) {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Sign In <ArrowRight className="w-4 h-4" /></>}
           </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-xs text-base-500">
+            Need an account?{' '}
+            <Link to="/signup" className="text-accent hover:text-accent-hover transition-colors font-medium">
+              Sign up
+            </Link>
+          </p>
+        </div>
 
         <div className="mt-6 flex items-center gap-3">
           <div className="h-px flex-1 bg-base-800" />

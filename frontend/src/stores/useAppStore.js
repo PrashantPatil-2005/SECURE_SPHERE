@@ -16,6 +16,15 @@ export const useAppStore = create(
       kc: 'timeline',
       nav: NAV_SHELL.SIDEBAR,
       tweaksOpen: false,
+      soundEnabled: true,
+      soundVolume: 0.6,
+
+      setSoundEnabled: (on) => set({ soundEnabled: !!on }),
+      toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
+      setSoundVolume: (v) => {
+        const n = Math.max(0, Math.min(1, Number(v) || 0));
+        set({ soundVolume: n });
+      },
 
       setTheme: (theme) => {
         const t = theme === 'light' ? 'light' : 'dark';
@@ -58,6 +67,8 @@ export const useAppStore = create(
         ann: s.ann,
         kc: s.kc,
         nav: s.nav,
+        soundEnabled: s.soundEnabled,
+        soundVolume: s.soundVolume,
       }),
       /** Persist rehydration uses internal `set` — never calls `setTheme`, so sync `<html>` here. */
       onRehydrateStorage: () => (state, error) => {

@@ -45,6 +45,8 @@ export default function IncidentToaster({ incidents = [] }) {
       const id = inc?.incident_id;
       if (!id || seenRef.current.has(id)) continue;
       seenRef.current.add(id);
+      // Critical incidents are owned by CriticalAlertModal — skip here.
+      if ((inc.severity || '').toLowerCase() === 'critical') continue;
       fresh.push({
         id,
         severity:    inc.severity,
