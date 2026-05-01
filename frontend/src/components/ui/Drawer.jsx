@@ -71,12 +71,13 @@ export function Drawer({
             role="dialog"
             aria-modal="true"
             aria-labelledby={title ? 'drawer-title' : undefined}
+            aria-describedby={description ? 'drawer-desc' : undefined}
           >
             {(title || showClose) && (
               <div className="flex items-start justify-between gap-3 border-b border-base-800 px-4 py-3">
                 <div className="min-w-0">
                   {title && <h2 id="drawer-title" className="text-sm font-semibold text-base-100">{title}</h2>}
-                  {description && <p className="mt-0.5 text-xs text-base-500">{description}</p>}
+                  {description && <p id="drawer-desc" className="mt-0.5 text-xs text-base-500">{description}</p>}
                 </div>
                 {showClose && (
                   <button

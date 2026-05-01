@@ -4,6 +4,7 @@ import { Zap, Loader2, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
+import EmptyState from '@/components/ui/EmptyState';
 import RiskGauge from '@/components/charts/RiskGauge';
 import SparkLine from '@/components/charts/SparkLine';
 import { cn, threatLevelColor } from '@/lib/utils';
@@ -118,12 +119,11 @@ export default function RiskScores({ riskScores }) {
           })}
         </div>
       ) : (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <Zap className="w-8 h-8 mx-auto mb-3 text-base-500 opacity-30" />
-            <p className="text-sm text-base-500">No risk data available</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Zap}
+          title="No risk data yet"
+          description="Risk scores accumulate as the engine ingests events from each service."
+        />
       )}
     </motion.div>
   );

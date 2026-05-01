@@ -22,6 +22,7 @@ monkey.patch_all()
 from auth import auth_bp, token_required, role_required
 from topology_checks import bp as topology_checks_bp
 from ai_endpoints import bp as ai_bp
+from attack_simulator import SimulatorRuntime, detect_target_services_unreachable
 import sys
 
 # --- MITRE ATT&CK static map (shared with correlation engine) ---------------
@@ -1518,6 +1519,122 @@ def mitre_mapping():
 
 
 # ============================================================
+# MITRE COVERAGE v2  (/api/v2/mitre/coverage)
+# ============================================================
+#
+# Tactic-bucketed coverage matrix optimised for the heatmap UI: every
+# technique SecuriSphere knows about appears as a cell with
+# {hit_count, last_seen, status, rules, incident_ids}. Status is
+# "covered" when hit_count > 0, else falls back to MITRE_MAP.coverage.
+
+@app.route('/api/v2/mitre/coverage')
+def mitre_coverage_v2():
+    # ---- 1. Aggregate hits + last_seen from recent incidents -----------
+    hit_counts: dict = defaultdict(int)
+    last_seen: dict  = {}
+    incident_ids: dict = defaultdict(list)
+    incidents = get_incidents(200)
+    for inc in incidents:
+        ts = inc.get("timestamp") or inc.get("created_at")
+        for technique in (inc.get("mitre_techniques") or []):
+            if not technique:
+                continue
+            hit_counts[technique] += 1
+            incident_ids[technique].append(inc.get("incident_id"))
+            if ts and (technique not in last_seen or ts > last_seen[technique]):
+                last_seen[technique] = ts
+
+    # Merge engine in-memory counter (covers trimmed Redis lists).
+    try:
+        eng_resp = requests.get(
+            "http://correlation-engine:5070/engine/mitre-mapping", timeout=2,
+        )
+        if eng_resp.status_code == 200:
+            for tech, hits in ((eng_resp.json().get("data") or {}).get("technique_hits") or {}).items():
+                hit_counts[tech] = max(hit_counts[tech], int(hits or 0))
+    except Exception:
+        pass
+
+    # ---- 2. Bucket every known technique by tactic ---------------------
+    buckets: dict = defaultdict(list)
+    coverage_summary = {"covered": 0, "uncovered": 0, "partial": 0, "theoretical": 0}
+    techniques_total = 0
+
+    for tid, entry in MITRE_MAP.items():
+        techniques_total += 1
+        hits = int(hit_counts.get(tid, 0))
+        if hits > 0:
+            status = "covered"
+            coverage_summary["covered"] += 1
+        elif entry.get("coverage") == "full":
+            status = "uncovered"
+            coverage_summary["uncovered"] += 1
+        elif entry.get("coverage") == "partial":
+            status = "partial"
+            coverage_summary["partial"] += 1
+        else:
+            status = "theoretical"
+            coverage_summary["theoretical"] += 1
+
+        buckets[entry["tactic"]].append({
+            "technique_id":      entry["technique_id"],
+            "technique_name":    entry["technique_name"],
+            "tactic":            entry["tactic"],
+            "tactic_id":         entry["tactic_id"],
+            "hit_count":         hits,
+            "last_seen":         last_seen.get(tid),
+            "status":            status,                # covered | partial | uncovered | theoretical
+            "coverage":          entry.get("coverage"), # static label from MITRE_MAP
+            "rules":             list(entry.get("correlation_rules") or []),
+            "detected_by":       list(entry.get("detected_by") or []),
+            "scenarios":         list(entry.get("scenarios") or []),
+            "description":       entry.get("description", ""),
+            "incident_ids":      incident_ids.get(tid, [])[:10],
+        })
+
+    # ---- 3. Order buckets by canonical kill-chain tactic order ---------
+    rows = []
+    seen_tactics = set()
+    for tactic in TACTIC_ORDER:
+        cells = buckets.get(tactic) or []
+        if not cells:
+            continue
+        cells.sort(key=lambda c: c["technique_id"])
+        rows.append({
+            "tactic":     tactic,
+            "tactic_id":  cells[0]["tactic_id"],
+            "covered":    sum(1 for c in cells if c["status"] == "covered"),
+            "total":      len(cells),
+            "techniques": cells,
+        })
+        seen_tactics.add(tactic)
+    # Append any tactics outside TACTIC_ORDER (defensive).
+    for tactic, cells in buckets.items():
+        if tactic in seen_tactics:
+            continue
+        cells.sort(key=lambda c: c["technique_id"])
+        rows.append({
+            "tactic":     tactic,
+            "tactic_id":  cells[0]["tactic_id"],
+            "covered":    sum(1 for c in cells if c["status"] == "covered"),
+            "total":      len(cells),
+            "techniques": cells,
+        })
+
+    return jsonify({
+        "status": "success",
+        "data": {
+            "rows":             rows,
+            "tactic_order":     TACTIC_ORDER,
+            "summary":          coverage_summary,
+            "techniques_total": techniques_total,
+            "incidents_total":  len(incidents),
+            "generated_at":     datetime.utcnow().isoformat() + "Z",
+        }
+    })
+
+
+# ============================================================
 # MTTD REPORT  (/api/mttd/report)
 # ============================================================
 
@@ -1672,7 +1789,42 @@ _ATTACK_VALID_SPEEDS = {"demo", "normal", "fast"}
 
 _attack_lock = threading.Lock()
 _attack_log = deque(maxlen=100)
-_attack_state = {"running": False, "scenario": None, "pid": None, "proc": None}
+_attack_state = {"running": False, "scenario": None, "pid": None, "proc": None, "mode": None}
+
+_simulator_runtime = None
+
+
+def _get_simulator():
+    global _simulator_runtime
+    if _simulator_runtime is None:
+        _simulator_runtime = SimulatorRuntime(
+            redis_client=redis_client if redis_available else None,
+            socketio=socketio,
+            log_cb=_attack_append,
+        )
+    return _simulator_runtime
+
+
+def _resolve_attacker_root():
+    """Locate dir containing the `attacker` package.
+
+    Works in three layouts:
+    - Docker image: /app/attacker
+    - Local repo: <repo_root>/attacker (one level up from backend/api)
+    - Render native build (rootDir=backend/api): /opt/render/project/src/attacker
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        "/app",
+        os.path.abspath(os.path.join(here, "..", "..")),
+        os.path.abspath(os.path.join(here, "..")),
+        os.environ.get("REPO_ROOT", ""),
+        os.environ.get("PROJECT_ROOT", ""),
+    ]
+    for c in candidates:
+        if c and os.path.isdir(os.path.join(c, "attacker")):
+            return c
+    return here
 
 
 def _attack_append(line: str):
@@ -1702,9 +1854,31 @@ def _attack_reader(proc, scenario):
                 _attack_state["proc"] = None
 
 
+def _attack_public_mode():
+    explicit = os.getenv("ATTACK_PUBLIC")
+    if explicit is not None:
+        return explicit == "1"
+    # Default: public outside production so local dev (`python app.py` or
+    # `docker compose up`) never trips on the auth wall. In prod, opt-in only.
+    return os.getenv("FLASK_ENV", "development").lower() != "production"
+
+
+def _attack_auth_guard(view):
+    """Apply @token_required + @role_required('admin') unless ATTACK_PUBLIC=1."""
+    from functools import wraps
+
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if _attack_public_mode():
+            return view(*args, **kwargs)
+        guarded = token_required(role_required('admin')(view))
+        return guarded(*args, **kwargs)
+
+    return wrapper
+
+
 @app.route('/api/attack/run', methods=['POST'])
-@token_required
-@role_required('admin')
+@_attack_auth_guard
 @limiter.limit(os.getenv("RATE_LIMIT_ATTACK", "5/hour"))
 def api_attack_run():
     body = request.get_json(silent=True) or {}
@@ -1716,14 +1890,34 @@ def api_attack_run():
     if speed not in _ATTACK_VALID_SPEEDS:
         return jsonify({"status": "error", "message": f"speed must be one of {sorted(_ATTACK_VALID_SPEEDS)}"}), 400
 
+    sim = _get_simulator()
     with _attack_lock:
-        if _attack_state["running"]:
+        if _attack_state["running"] or sim.is_running():
             return jsonify({
                 "status": "busy",
                 "message": "attack already running",
                 "scenario": _attack_state["scenario"],
                 "pid": _attack_state["pid"],
+                "mode": _attack_state.get("mode"),
             }), 409
+
+    if detect_target_services_unreachable():
+        if not sim.start(scenario, speed):
+            return jsonify({"status": "busy", "message": "simulator already running"}), 409
+        with _attack_lock:
+            _attack_log.clear()
+            _attack_state.update({"running": True, "scenario": scenario, "pid": None, "proc": None, "mode": "inprocess"})
+        _attack_append(f"[launch] mode=inprocess scenario={scenario} speed={speed}")
+
+        def _watch_inprocess():
+            while sim.is_running():
+                time.sleep(0.5)
+            with _attack_lock:
+                _attack_state["running"] = False
+            _attack_append(f"[done] scenario={scenario} mode=inprocess")
+
+        threading.Thread(target=_watch_inprocess, daemon=True).start()
+        return jsonify({"status": "started", "scenario": scenario, "mode": "inprocess"})
 
     if scenario == "all":
         runner = (
@@ -1738,6 +1932,13 @@ def api_attack_run():
     else:
         cmd = [sys.executable, "-u", "-m", f"attacker.scenario_{scenario}", "--speed", speed]
 
+    attacker_root = _resolve_attacker_root()
+    sub_env = os.environ.copy()
+    existing_pp = sub_env.get("PYTHONPATH", "")
+    sub_env["PYTHONPATH"] = (
+        f"{attacker_root}{os.pathsep}{existing_pp}" if existing_pp else attacker_root
+    )
+
     try:
         proc = subprocess.Popen(
             cmd,
@@ -1745,20 +1946,21 @@ def api_attack_run():
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            cwd="/app",
+            cwd=attacker_root,
+            env=sub_env,
         )
     except Exception as e:
         return jsonify({"status": "error", "message": f"spawn failed: {e}"}), 500
 
     with _attack_lock:
         _attack_log.clear()
-        _attack_state.update({"running": True, "scenario": scenario, "pid": proc.pid, "proc": proc})
+        _attack_state.update({"running": True, "scenario": scenario, "pid": proc.pid, "proc": proc, "mode": "subprocess"})
 
-    _attack_append(f"[launch] scenario={scenario} speed={speed} pid={proc.pid}")
+    _attack_append(f"[launch] mode=subprocess scenario={scenario} speed={speed} pid={proc.pid}")
     t = threading.Thread(target=_attack_reader, args=(proc, scenario), daemon=True)
     t.start()
 
-    return jsonify({"status": "started", "scenario": scenario, "pid": proc.pid})
+    return jsonify({"status": "started", "scenario": scenario, "pid": proc.pid, "mode": "subprocess"})
 
 
 @app.route('/api/attack/status', methods=['GET'])
@@ -1768,6 +1970,9 @@ def api_attack_status():
             "running": bool(_attack_state["running"]),
             "scenario": _attack_state["scenario"],
             "pid": _attack_state["pid"],
+            "mode": _attack_state.get("mode"),
+            "public_mode": _attack_public_mode(),
+            "launch_mode": os.getenv("ATTACK_MODE", "auto"),
             "log_lines": list(_attack_log),
         })
 

@@ -60,6 +60,7 @@ export function Modal({
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? 'modal-title' : undefined}
+          aria-describedby={description ? 'modal-desc' : undefined}
         >
           <motion.div
             ref={panelRef}
@@ -79,7 +80,7 @@ export function Modal({
               <div className="flex items-start justify-between gap-3 border-b border-base-800 px-5 py-3">
                 <div className="min-w-0">
                   {title && <h2 id="modal-title" className="text-sm font-semibold text-base-100">{title}</h2>}
-                  {description && <p className="mt-0.5 text-xs text-base-500">{description}</p>}
+                  {description && <p id="modal-desc" className="mt-0.5 text-xs text-base-500">{description}</p>}
                 </div>
                 {showClose && (
                   <button

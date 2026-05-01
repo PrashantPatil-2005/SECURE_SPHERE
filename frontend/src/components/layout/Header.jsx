@@ -68,13 +68,14 @@ export default function Header({
           </kbd>
         </Button>
 
-        <div className="relative hidden min-w-0 max-w-md flex-1 items-center sm:flex">
+        <div className="relative hidden min-w-0 max-w-md flex-1 items-center sm:flex" role="search">
           <input
-            type="text"
+            type="search"
             placeholder="Global search…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 w-full rounded-md border border-dashed border-base-800 bg-base-950/40 px-3 font-mono text-[11px] text-base-200 outline-none transition-colors duration-200 placeholder:text-base-600 focus:border-accent/35"
+            aria-label="Global search"
+            className="h-8 w-full rounded-md border border-dashed border-base-800 bg-base-950/40 px-3 font-mono text-[11px] text-base-200 outline-none transition-colors duration-200 placeholder:text-base-600 focus:border-accent/35 focus-visible:ring-2 focus-visible:ring-accent/40"
           />
           {(searchQuery.trim() !== '' && searchResults !== null) && (
             <div className="absolute left-0 right-0 top-10 z-50 max-h-80 overflow-y-auto rounded-lg border border-base-800 bg-base-900 p-2 shadow-xl transition-colors duration-200">
@@ -117,22 +118,35 @@ export default function Header({
           variant="icon"
           size="icon"
           title="Notifications"
+          aria-label={incidentCount > 0 ? `Notifications, ${incidentCount} active` : 'Notifications'}
+          aria-haspopup="dialog"
           onClick={onOpenNotifications}
           className="relative"
         >
           <Bell className={cn('h-3.5 w-3.5', unreadCount > 0 && 'animate-[wiggle_1.5s_ease-in-out_infinite]')} />
           {incidentCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-base-900 bg-red-500 px-1 text-[8px] font-bold text-white shadow-[0_0_8px_rgba(239,68,68,0.7)]">
+            <span
+              aria-hidden="true"
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-base-900 bg-red-500 px-1 text-[8px] font-bold text-white shadow-[0_0_8px_rgba(239,68,68,0.7)]"
+            >
               {incidentCount > 99 ? '99+' : incidentCount}
             </span>
           )}
         </Button>
 
-        <Button type="button" variant="icon" size="icon" onClick={() => onToggleTheme?.()} title="Toggle light / dark theme">
+        <Button
+          type="button"
+          variant="icon"
+          size="icon"
+          onClick={() => onToggleTheme?.()}
+          title="Toggle light / dark theme"
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          aria-pressed={theme === 'dark'}
+        >
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
 
-        <Button variant="icon" size="icon" onClick={onRefresh} title="Refresh">
+        <Button variant="icon" size="icon" onClick={onRefresh} title="Refresh" aria-label="Refresh data">
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
 
@@ -141,6 +155,7 @@ export default function Header({
           size="icon"
           onClick={onClear}
           title="Clear data"
+          aria-label="Clear data"
           className="text-base-500 hover:text-base-200"
         >
           <Trash2 className="h-3.5 w-3.5" />

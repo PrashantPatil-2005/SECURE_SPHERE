@@ -64,15 +64,18 @@ export default function NotificationCenter({
         </div>
       }
     >
-      <div className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1">
-        <Filter className="h-3.5 w-3.5 shrink-0 text-base-500" />
+      <div role="toolbar" aria-label="Severity filter" className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1">
+        <Filter aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-base-500" />
         {SEVERITIES.map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => setFilter(s)}
+            aria-pressed={filter === s}
+            aria-label={`Filter ${s} (${counts[s] ?? 0})`}
             className={cn(
               'inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
               filter === s
                 ? 'border-accent/40 bg-accent/10 text-accent'
                 : 'border-base-800 text-base-500 hover:text-base-300'
@@ -88,6 +91,7 @@ export default function NotificationCenter({
             size="icon"
             onClick={onClear}
             title="Clear all data"
+            aria-label="Clear all data"
             className="ml-auto text-base-500 hover:text-red-400"
           >
             <Trash2 className="h-3.5 w-3.5" />

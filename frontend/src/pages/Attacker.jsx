@@ -184,8 +184,12 @@ export default function Attacker() {
     setErr('');
     try {
       const res = await api.runAttack(scenario, spd);
-      if (res?.status === 'error' || res?.status === 'busy') {
-        setErr(res.message || 'launch failed');
+      if (res?.http_status === 401 || res?.http_status === 403) {
+        setErr('AUTH_REQUIRED');
+        return;
+      }
+      if (!res?.ok || res?.status === 'error' || res?.status === 'busy') {
+        setErr(res?.message || 'launch failed');
       }
     } catch (e) {
       setErr(String(e?.message || e));
@@ -225,7 +229,28 @@ export default function Attacker() {
       <main className="mx-auto flex max-w-6xl flex-col gap-5 px-6 py-6">
         <TargetBar />
 
-        {err && (
+        {err === 'AUTH_REQUIRED' ? (
+          <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 font-mono text-xs text-amber-200">
+            <div className="font-semibold">Authentication required</div>
+            <div className="mt-1 text-[11px] text-amber-200/80">
+              Backend rejected with 401. Either sign in as admin then return to{' '}
+              <code className="rounded bg-amber-500/20 px-1">/attacker</code>, or set{' '}
+              <code className="rounded bg-amber-500/20 px-1">ATTACK_PUBLIC=1</code> on the backend
+              for public demo mode.
+            </div>
+            <div className="mt-2 flex gap-2">
+              <a
+                href="/login"
+                className="rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-amber-100 hover:bg-amber-500/25"
+              >
+                Sign in →
+              </a>
+              <span className="font-mono text-[10px] text-amber-200/60">
+                public_mode={String(status?.public_mode ?? 'unknown')}
+              </span>
+            </div>
+          </div>
+        ) : err && (
           <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 font-mono text-xs text-red-300">
             {err}
           </div>

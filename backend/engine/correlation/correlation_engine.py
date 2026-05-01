@@ -45,6 +45,29 @@ except Exception as _kc_err:
     logging.warning("Kill chain module unavailable: %s", _kc_err)
     _KC_AVAILABLE = False
 
+# MITRE map — used to resolve a primary technique label (id + name) for
+# every incident so dashboards/Discord can show one canonical technique
+# rather than a raw list. Falls back gracefully if the module is missing.
+try:
+    from mitre.mitre_map import MITRE_MAP, get_technique
+    _MITRE_AVAILABLE = True
+except Exception as _mitre_err:
+    logging.warning("MITRE map unavailable: %s", _mitre_err)
+    MITRE_MAP = {}
+    _MITRE_AVAILABLE = False
+    def get_technique(tid):
+        return {"technique_id": tid, "technique_name": "Unknown Technique", "tactic": "Unknown"}
+
+# System-wide audit log helper. Best-effort import — engine must keep
+# running if the audit module/table is missing.
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+    from api.audit import log_audit  # type: ignore
+except Exception as _audit_err:
+    logging.debug("audit log helper unavailable: %s", _audit_err)
+    def log_audit(*_a, **_kw):
+        return None
+
 # Redis Streams event bus (Phase 13). Optional — falls back to pub/sub when
 # unavailable so the engine still works on bare-bones Redis without XADD.
 try:
@@ -500,6 +523,12 @@ class CorrelationEngine:
         ) or source_ip
         current_risk = self.risk_scores[risk_key]["score"] if risk_key in self.risk_scores else 0
 
+        # Resolve primary (lead) MITRE technique for this incident — first
+        # entry in `mitre` is the canonical one. Lookup adds the human name
+        # + tactic so dashboards / Discord / badges don't need their own map.
+        primary_id = (mitre[0] if mitre else None) or None
+        primary = get_technique(primary_id) if primary_id else None
+
         incident = {
             "incident_id":            str(uuid4()),
             "incident_type":          incident_type,
@@ -512,6 +541,9 @@ class CorrelationEngine:
             "correlated_event_count": len(correlated_events),
             "layers_involved":        list(set(layers)),
             "mitre_techniques":       mitre,
+            "technique_id":           primary["technique_id"] if primary else None,
+            "technique_name":         primary["technique_name"] if primary else None,
+            "tactic":                 primary["tactic"] if primary else None,
             "recommended_actions":    actions,
             "risk_score_at_time":     current_risk,
             "time_span_seconds":      int(time_span),
@@ -536,6 +568,35 @@ class CorrelationEngine:
         return incident
 
     def publish_incident(self, incident: dict) -> None:
+        # Audit: rule fired. Recorded before persist so we still capture the
+        # firing even if downstream stores fail.
+        log_audit(
+            action="rule.triggered",
+            actor="engine",
+            actor_type="engine",
+            target_type="incident",
+            target_id=str(incident.get("incident_id") or ""),
+            detail={
+                "rule_name":    incident.get("incident_type"),
+                "severity":     incident.get("severity"),
+                "source_ip":    incident.get("source_ip"),
+                "technique_id": incident.get("technique_id"),
+            },
+            severity="info",
+            source_ip=incident.get("source_ip"),
+        )
+
+        # Backfill primary technique for incidents that bypassed
+        # create_incident() (YAML-rule path) so the rest of the pipeline can
+        # rely on technique_id/technique_name being present.
+        if not incident.get("technique_id"):
+            techs = incident.get("mitre_techniques") or []
+            if techs:
+                primary = get_technique(techs[0])
+                incident["technique_id"]   = primary.get("technique_id")
+                incident["technique_name"] = primary.get("technique_name")
+                incident.setdefault("tactic", primary.get("tactic"))
+
         # Attach Bayesian confidence + per-stage breakdown so dashboards and
         # alert rules can rank incidents by posterior P(attack), not just by
         # rule severity.
@@ -615,6 +676,27 @@ class CorrelationEngine:
         # Persist to PostgreSQL — correlated_incidents table (incident summary)
         self._persist_incident_pg(incident)
 
+        # Audit: kill chain / incident persisted. Recorded after durable writes
+        # so the audit row only fires for incidents that actually landed.
+        log_audit(
+            action="kill_chain.created",
+            actor="engine",
+            actor_type="engine",
+            target_type="kill_chain",
+            target_id=str(incident.get("incident_id") or ""),
+            detail={
+                "rule_name":        incident.get("incident_type"),
+                "service_path":     incident.get("service_path") or [],
+                "technique_id":     incident.get("technique_id"),
+                "technique_name":   incident.get("technique_name"),
+                "mitre_techniques": incident.get("mitre_techniques") or [],
+                "mttd_seconds":     incident.get("mttd_seconds"),
+                "severity":         incident.get("severity"),
+            },
+            severity="critical",
+            source_ip=incident.get("source_ip"),
+        )
+
         # Terminal banner
         print("\033[91m")
         print("════════════════════════════════════════════")
@@ -665,15 +747,24 @@ class CorrelationEngine:
             )
             with conn:
                 with conn.cursor() as cur:
+                    # Idempotent column upgrade — keeps deployments without
+                    # an init_db.sql replay working.
+                    cur.execute(
+                        "ALTER TABLE correlated_incidents "
+                        "ADD COLUMN IF NOT EXISTS technique_id VARCHAR(20), "
+                        "ADD COLUMN IF NOT EXISTS technique_name VARCHAR(120), "
+                        "ADD COLUMN IF NOT EXISTS tactic VARCHAR(60)"
+                    )
                     cur.execute(
                         """
                         INSERT INTO correlated_incidents (
                             incident_id, incident_type, title, description, severity,
                             confidence, source_ip, target_username,
                             correlated_event_ids, layers_involved, mitre_techniques,
-                            recommended_actions, risk_score_at_time, time_span_seconds
+                            recommended_actions, risk_score_at_time, time_span_seconds,
+                            technique_id, technique_name, tactic
                         ) VALUES (
-                            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+                            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
                         ) ON CONFLICT (incident_id) DO NOTHING
                         """,
                         (
@@ -691,6 +782,9 @@ class CorrelationEngine:
                             incident.get("recommended_actions", []),
                             incident.get("risk_score_at_time", 0),
                             incident.get("time_span_seconds", 0),
+                            incident.get("technique_id"),
+                            incident.get("technique_name"),
+                            incident.get("tactic"),
                         ),
                     )
             conn.close()
@@ -774,6 +868,11 @@ class CorrelationEngine:
 
         color     = self._DISCORD_COLORS.get(incident.get("severity", "low"), 15548997)
         mitre_str = ", ".join(incident.get("mitre_techniques", [])) or "N/A"
+        primary_str = (
+            f"{incident['technique_id']} · {incident['technique_name']}"
+            if incident.get("technique_id") and incident.get("technique_name")
+            else "N/A"
+        )
         path_str  = " → ".join(incident.get("service_path", [])) or "N/A"
         actions   = "\n".join(
             f"• {a}" for a in (incident.get("recommended_actions") or [])
@@ -783,6 +882,7 @@ class CorrelationEngine:
             {"name": "Severity",          "value": incident.get("severity", "?").upper(), "inline": True},
             {"name": "Source IP",          "value": incident.get("source_ip", "?"),        "inline": True},
             {"name": "Type",               "value": incident.get("incident_type", "?"),    "inline": True},
+            {"name": "Primary Technique",  "value": primary_str,                           "inline": False},
             {"name": "MITRE Techniques",   "value": mitre_str,                             "inline": False},
             {"name": "Service Attack Path","value": path_str,                              "inline": False},
             {"name": "MTTD",               "value": f"{incident.get('mttd_seconds', 'N/A')}s", "inline": True},

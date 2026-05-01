@@ -1,9 +1,10 @@
 import { Fragment } from 'react';
 import { motion } from 'framer-motion';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import EventRow from './EventRow';
 
 /**
- * Dense SOC log table — sticky header, mono body.
+ * Dense SOC log table — sticky header, mono body, sortable columns.
  *
  * @param {{
  *   rows: Array<Record<string, unknown>>;
@@ -11,20 +12,42 @@ import EventRow from './EventRow';
  *   selectedIndex: number;
  *   rowRefs?: React.MutableRefObject<(HTMLTableRowElement | null)[]>;
  *   onRowClick: (index: number, id: string) => void;
+ *   sortBy?: string;
+ *   sortDir?: 'asc' | 'desc';
+ *   onSort?: (key: string) => void;
  * }} props
  */
-export default function EventTable({ rows, expandedId, selectedIndex, rowRefs, onRowClick }) {
+export default function EventTable({
+  rows,
+  expandedId,
+  selectedIndex,
+  rowRefs,
+  onRowClick,
+  sortBy,
+  sortDir,
+  onSort,
+}) {
   return (
     <div className="max-h-[min(70vh,720px)] overflow-auto">
       <table className="w-full table-fixed text-sm font-mono">
         <thead className="sticky top-0 z-10 border-b border-base-800 bg-base-900 text-left text-xs uppercase tracking-wide text-base-400">
           <tr>
-            <th className="w-[100px] py-2 pl-3 pr-2">Time</th>
-            <th className="w-10 py-2 pr-2">Sev</th>
-            <th className="w-[72px] py-2 pr-2">Layer</th>
+            <SortableTh width="100px" sortKey="time" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="pl-3">
+              Time
+            </SortableTh>
+            <SortableTh width="40px" sortKey="severity" sortBy={sortBy} sortDir={sortDir} onSort={onSort}>
+              Sev
+            </SortableTh>
+            <SortableTh width="72px" sortKey="layer" sortBy={sortBy} sortDir={sortDir} onSort={onSort}>
+              Layer
+            </SortableTh>
             <th className="py-2 pr-2">Event</th>
-            <th className="w-[120px] py-2 pr-2">Service</th>
-            <th className="w-[120px] py-2 pr-2">Src</th>
+            <SortableTh width="120px" sortKey="service" sortBy={sortBy} sortDir={sortDir} onSort={onSort}>
+              Service
+            </SortableTh>
+            <SortableTh width="120px" sortKey="src" sortBy={sortBy} sortDir={sortDir} onSort={onSort}>
+              Src
+            </SortableTh>
             <th className="w-[140px] py-2 pr-2">Target</th>
             <th className="w-[72px] py-2 pr-3">MITRE</th>
           </tr>
@@ -72,5 +95,27 @@ export default function EventTable({ rows, expandedId, selectedIndex, rowRefs, o
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SortableTh({ width, sortKey, sortBy, sortDir, onSort, children, className = '' }) {
+  const active = sortBy === sortKey;
+  const Icon = !active ? ArrowUpDown : sortDir === 'asc' ? ArrowUp : ArrowDown;
+  const handle = () => onSort?.(sortKey);
+  return (
+    <th style={{ width }} className={`py-2 pr-2 ${className}`}>
+      <button
+        type="button"
+        onClick={handle}
+        aria-label={`Sort by ${sortKey}`}
+        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className={`inline-flex items-center gap-1 rounded px-1 -mx-1 hover:text-base-200 ${
+          active ? 'text-base-100' : ''
+        }`}
+      >
+        {children}
+        <Icon className="h-3 w-3 opacity-60" />
+      </button>
+    </th>
   );
 }

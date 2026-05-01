@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS correlated_incidents (
     layers_involved TEXT[],
     event_types TEXT[],
     mitre_techniques TEXT[],
+    -- Primary (lead) MITRE technique resolved from mitre_techniques[0] —
+    -- denormalised so dashboards can chip "T1110 · Brute Force" without
+    -- joining to the static MITRE_MAP.
+    technique_id VARCHAR(20),
+    technique_name VARCHAR(120),
+    tactic VARCHAR(60),
     recommended_actions TEXT[],
     risk_score_at_time INTEGER,
     time_span_seconds FLOAT,
@@ -138,6 +144,29 @@ CREATE INDEX IF NOT EXISTS idx_kc_incident_type ON kill_chains(incident_type);
 
 -- ─── Topology Snapshot Table ──────────────────────────────────────────────
 -- Optional: persist topology snapshots for historical analysis
+-- ─── Audit Log Table ──────────────────────────────────────────────────────
+-- Append-only system audit log. Records every security-significant action:
+-- automated (engine fired a rule, kill chain created) and user-initiated
+-- (login, incident acknowledged). Distinct from login_audit, which only
+-- records sign-in events keyed by username.
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    timestamp   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    actor       VARCHAR(120) NOT NULL,
+    actor_type  VARCHAR(20)  NOT NULL,                  -- system | user | engine
+    action      VARCHAR(80)  NOT NULL,                  -- e.g. kill_chain.created
+    target_type VARCHAR(40),                            -- kill_chain | incident | user | rule
+    target_id   VARCHAR(120),
+    detail      JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    severity    VARCHAR(20)  NOT NULL DEFAULT 'info',   -- info | warning | critical
+    source_ip   VARCHAR(45)
+);
+
+CREATE INDEX IF NOT EXISTS audit_log_timestamp_idx ON audit_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS audit_log_action_idx    ON audit_log(action);
+CREATE INDEX IF NOT EXISTS audit_log_actor_idx     ON audit_log(actor);
+CREATE INDEX IF NOT EXISTS audit_log_severity_idx  ON audit_log(severity);
+
 CREATE TABLE IF NOT EXISTS topology_snapshots (
     id           SERIAL PRIMARY KEY,
     snapshot     JSONB  NOT NULL,

@@ -16,6 +16,9 @@ export default function IncidentItem({ incident, selected, onSelect }) {
   const steps = killChainStepCount(incident);
   const sev = getSeverityString(incident?.severity);
   const techniques = Array.isArray(incident?.mitre_techniques) ? incident.mitre_techniques : [];
+  const primaryId = safeString(incident?.technique_id) || (techniques[0] ? safeString(techniques[0]) : '');
+  const primaryName = safeString(incident?.technique_name);
+  const secondaryTechs = techniques.filter((t) => safeString(t) !== primaryId);
 
   return (
     <button
@@ -40,9 +43,18 @@ export default function IncidentItem({ incident, selected, onSelect }) {
             </>
           )}
         </p>
-        {techniques.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {techniques.slice(0, 6).map((t) => (
+        {(primaryId || techniques.length > 0) && (
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            {primaryId && (
+              <span
+                className="inline-flex items-center gap-1 rounded border border-accent/35 bg-accent/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent"
+                title={primaryName ? `${primaryId} — ${primaryName}` : primaryId}
+              >
+                {primaryId}
+                {primaryName && <span className="font-normal opacity-80">· {primaryName}</span>}
+              </span>
+            )}
+            {secondaryTechs.slice(0, 5).map((t) => (
               <span
                 key={safeString(t)}
                 className="rounded border border-base-700 bg-base-950 px-1.5 py-0.5 font-mono text-[9px] text-base-300"

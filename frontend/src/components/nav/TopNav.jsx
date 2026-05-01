@@ -148,7 +148,7 @@ export default function TopNav({
     <header className="flex h-[56px] items-center justify-between border-b border-base-800 bg-base-900/80 px-4 backdrop-blur">
 
       {/* LEFT: NAVIGATION */}
-      <nav className="flex items-center gap-4 overflow-x-auto">
+      <nav aria-label="Primary" className="flex items-center gap-4 overflow-x-auto">
         {NAV_ITEMS.map((item) => {
           const Icon = ICONS[item.id] ?? LayoutDashboard;
           const badge = badges[item.id];

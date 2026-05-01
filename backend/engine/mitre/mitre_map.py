@@ -343,6 +343,87 @@ MITRE_MAP = {
         ),
         "coverage": "partial",
     },
+    "T1526": {
+        "technique_id": "T1526",
+        "technique_name": "Cloud Service Discovery",
+        "tactic": "Discovery",
+        "tactic_id": "TA0007",
+        "description": (
+            "Enumerating cloud services and APIs reachable from the "
+            "compromised account/host to map attack surface."
+        ),
+        "detected_by": ["api-monitor", "browser-agent"],
+        "correlation_rules": [
+            "recon_to_exploitation",
+            "browser_recon_scan",
+        ],
+        "scenarios": ["B"],
+        "container_context": (
+            "Partial: inferred when a single source enumerates many "
+            "internal API surfaces in a short window."
+        ),
+        "coverage": "partial",
+    },
+    "T1570": {
+        "technique_id": "T1570",
+        "technique_name": "Lateral Tool Transfer",
+        "tactic": "Lateral Movement",
+        "tactic_id": "TA0008",
+        "description": (
+            "Transferring tools or other files between systems in a "
+            "compromised environment to support further activity."
+        ),
+        "detected_by": ["network-monitor"],
+        "correlation_rules": [
+            "full_kill_chain",
+            "browser_multi_hop_lateral_movement",
+        ],
+        "scenarios": ["C"],
+        "container_context": (
+            "Partial: tagged on multi-hop lateral incidents; no dedicated "
+            "binary-transfer detector wired in yet."
+        ),
+        "coverage": "partial",
+    },
+    "T1548": {
+        "technique_id": "T1548",
+        "technique_name": "Abuse Elevation Control Mechanism",
+        "tactic": "Privilege Escalation",
+        "tactic_id": "TA0004",
+        "description": (
+            "Circumventing elevation control to gain higher-level "
+            "permissions on a host or in an application."
+        ),
+        "detected_by": ["browser-agent"],
+        "correlation_rules": ["browser_recon_to_privilege_escalation"],
+        "scenarios": ["B"],
+        "container_context": (
+            "Partial: inferred when a privilege_change browser event "
+            "follows reconnaissance from the same site_id."
+        ),
+        "coverage": "partial",
+    },
+    "T1195": {
+        "technique_id": "T1195",
+        "technique_name": "Supply Chain Compromise",
+        "tactic": "Initial Access",
+        "tactic_id": "TA0001",
+        "description": (
+            "Adversary alters a service or its dependencies in a way that "
+            "later manifests as anomalous topology / behaviour drift."
+        ),
+        "detected_by": ["topology-collector", "behavior-fingerprint"],
+        "correlation_rules": [
+            "yaml_topology_drift_to_lateral",
+            "yaml_anomaly_amplified_recon",
+        ],
+        "scenarios": [],
+        "container_context": (
+            "Theoretical: tagged on topology_drift / behavior_anomaly "
+            "correlations as a smell. No software-supply-chain detector."
+        ),
+        "coverage": "theoretical",
+    },
 }
 
 

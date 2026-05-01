@@ -1,13 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Settings as SettingsIcon, User, Bell, Palette, Volume2, VolumeX, Sun, Moon } from 'lucide-react';
+import {
+  Settings as SettingsIcon, User, Bell, Palette, Volume2, VolumeX, Sun, Moon,
+  Lock, Activity, Monitor, Globe, Loader2, Trash2,
+} from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import EmptyState from '@/components/ui/EmptyState';
 import { useAppStore } from '@/stores/useAppStore';
-import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/Toaster';
+import { api } from '@/lib/api';
+import { cn, formatTimestampFull, relativeTime } from '@/lib/utils';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
+  { id: 'security', label: 'Security', icon: Lock },
+  { id: 'sessions', label: 'Sessions', icon: Monitor },
+  { id: 'audit', label: 'Audit log', icon: Activity },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'appearance', label: 'Appearance', icon: Palette },
 ];
@@ -47,12 +57,12 @@ export default function Settings() {
     <div className="mx-auto max-w-4xl px-5 py-6">
       <PageHeader
         title="Settings"
-        description="Personalize SecuriSphere — profile, alerts, and appearance."
+        description="Personalize SecuriSphere — profile, security, alerts, appearance."
         icon={SettingsIcon}
       />
 
       <div className="grid grid-cols-[180px_1fr] gap-6">
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-1" aria-label="Settings sections">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -61,6 +71,7 @@ export default function Settings() {
                 key={t.id}
                 type="button"
                 onClick={() => switchTab(t.id)}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
                   'inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors',
                   active
@@ -77,6 +88,9 @@ export default function Settings() {
 
         <div className="rounded-xl border border-base-800 bg-base-900/40 p-5">
           {tab === 'profile' && <ProfileTab user={user} />}
+          {tab === 'security' && <SecurityTab />}
+          {tab === 'sessions' && <SessionsTab />}
+          {tab === 'audit' && <AuditTab />}
           {tab === 'notifications' && (
             <NotificationsTab
               soundEnabled={soundEnabled}
@@ -127,7 +141,7 @@ function Row({ label, hint, children }) {
 
 function ProfileTab({ user }) {
   return (
-    <Section title="Account" description="Read-only for the demo build. Wire to /api/auth/me later.">
+    <Section title="Account" description="Profile info from current session.">
       <Row label="Username">
         <span className="font-mono text-[12px] text-base-200">{user?.username || '—'}</span>
       </Row>
@@ -137,6 +151,186 @@ function ProfileTab({ user }) {
       <Row label="Role">
         <span className="font-mono text-[11px] uppercase tracking-wider text-accent">{user?.role || 'analyst'}</span>
       </Row>
+    </Section>
+  );
+}
+
+function SecurityTab() {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (next !== confirm) {
+      toast.error('New password does not match confirmation');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await api.changePassword(current, next);
+      if (res?.success) {
+        toast.success('Password changed');
+        setCurrent(''); setNext(''); setConfirm('');
+      } else {
+        toast.error(res?.message || 'Could not change password');
+      }
+    } catch {
+      toast.error('Could not change password');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section title="Change password" description="Min 8 chars, must include letter + digit.">
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <label className="text-[11px] text-base-400">
+          <span className="mb-1 block">Current password</span>
+          <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} required autoComplete="current-password" />
+        </label>
+        <label className="text-[11px] text-base-400">
+          <span className="mb-1 block">New password</span>
+          <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={8} autoComplete="new-password" />
+        </label>
+        <label className="text-[11px] text-base-400">
+          <span className="mb-1 block">Confirm new password</span>
+          <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} autoComplete="new-password" />
+        </label>
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary" size="sm" disabled={busy} className="gap-1.5">
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Update password
+          </Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+function SessionsTab() {
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+
+  const load = async () => {
+    setBusy(true);
+    try {
+      const res = await api.listSessions();
+      setRows(res?.data || []);
+    } catch {
+      setRows([]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const revoke = async (fp) => {
+    if (!window.confirm('Revoke this session?')) return;
+    try {
+      const res = await api.revokeSession(fp);
+      if (res?.success) {
+        toast.success('Session revoked');
+        load();
+      } else {
+        toast.error(res?.message || 'Revoke failed');
+      }
+    } catch {
+      toast.error('Revoke failed');
+    }
+  };
+
+  if (rows === null && busy) {
+    return <div className="flex items-center gap-2 text-[12px] text-base-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading sessions…</div>;
+  }
+  if (!rows || rows.length === 0) {
+    return <EmptyState icon={Monitor} title="No active sessions" description="Sign in to populate this list." />;
+  }
+
+  return (
+    <Section title="Active sessions" description="Revoke any session that isn't yours.">
+      <ul className="divide-y divide-dashed divide-base-800">
+        {rows.map((s) => (
+          <li key={s.token_fp} className="flex items-start justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Globe className="h-3.5 w-3.5 text-base-500" />
+                <span className="font-mono text-[12px] text-base-200">{s.ip || 'unknown'}</span>
+                {s.current && (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300">
+                    current
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 truncate font-mono text-[10px] text-base-500">{s.user_agent || 'unknown agent'}</div>
+              <div className="mt-0.5 font-mono text-[10px] text-base-600">
+                Issued {s.issued_at ? relativeTime(s.issued_at) : '—'} · fp {s.token_fp}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => revoke(s.token_fp)}
+              disabled={s.current}
+              title={s.current ? 'Sign out via the profile menu' : 'Revoke'}
+              className="text-red-300 hover:text-red-200"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Revoke
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function AuditTab() {
+  const [rows, setRows] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.listAuditLogins(50)
+      .then((res) => { if (!cancelled) setRows(res?.data || []); })
+      .catch(() => { if (!cancelled) setRows([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (rows === null) {
+    return <div className="flex items-center gap-2 text-[12px] text-base-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading audit log…</div>;
+  }
+  if (!rows.length) {
+    return <EmptyState icon={Activity} title="No audit rows" description="Login attempts will appear once recorded." />;
+  }
+  return (
+    <Section title="Login audit" description="Recent sign-in attempts (last 50).">
+      <ul className="divide-y divide-dashed divide-base-800">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-start justify-between gap-3 py-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'inline-flex h-1.5 w-1.5 rounded-full',
+                    r.success ? 'bg-emerald-400' : 'bg-red-400'
+                  )}
+                />
+                <span className="font-mono text-[12px] text-base-200">{r.username}</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-base-500">{r.reason || (r.success ? 'login' : 'fail')}</span>
+              </div>
+              <div className="mt-0.5 truncate font-mono text-[10px] text-base-500">
+                {r.ip || 'no ip'} · {r.user_agent || 'unknown agent'}
+              </div>
+            </div>
+            <span className="shrink-0 font-mono text-[10px] text-base-600" title={r.at ? formatTimestampFull(r.at) : ''}>
+              {r.at ? relativeTime(r.at) : '—'}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }
@@ -163,6 +357,7 @@ function NotificationsTab({ soundEnabled, toggleSound, soundVolume, setSoundVolu
           step={0.05}
           value={soundVolume}
           onChange={(e) => setSoundVolume(parseFloat(e.target.value))}
+          aria-label="Alert volume"
           className="h-1 w-40 cursor-pointer appearance-none rounded-full bg-base-800 accent-accent"
         />
       </Row>

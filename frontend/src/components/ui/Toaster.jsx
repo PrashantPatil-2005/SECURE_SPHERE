@@ -64,7 +64,13 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[1700] flex w-[340px] flex-col gap-2">
+      <div
+        role="region"
+        aria-label="Toast notifications"
+        aria-live="polite"
+        aria-relevant="additions"
+        className="pointer-events-none fixed bottom-4 right-4 z-[1700] flex w-[340px] flex-col gap-2"
+      >
         <AnimatePresence initial={false}>
           {visible.map((t) => {
             const v = VARIANT[t.variant] || VARIANT.info;

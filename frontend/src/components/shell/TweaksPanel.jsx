@@ -47,7 +47,7 @@ export default function TweaksPanel({ badges = {} }) {
       >
         <div className="flex items-center justify-between border-b border-base-800 px-4 py-3">
           <span className="font-mono text-xs font-semibold uppercase tracking-wider text-base-500">Tweaks</span>
-          <Button variant="icon" size="icon" onClick={() => setOpen(false)} title="Close">
+          <Button variant="icon" size="icon" onClick={() => setOpen(false)} title="Close" aria-label="Close tweaks panel">
             <X className="h-4 w-4" />
           </Button>
         </div>

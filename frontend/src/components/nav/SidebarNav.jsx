@@ -181,7 +181,8 @@ export default function SidebarNav({ badges = {} }) {
 
         <button
           onClick={() => setCollapsed((c) => !c)}
-          aria-label="Toggle sidebar"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
           className="flex h-7 w-7 items-center justify-center rounded-md border border-base-800 bg-base-950 text-base-400 transition-all hover:border-base-600 hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           {collapsed ? (
@@ -193,7 +194,7 @@ export default function SidebarNav({ badges = {} }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex flex-1 flex-col gap-1 px-2 py-3">
+      <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 px-2 py-3">
         {NAV_ITEMS.map((item) => {
           const Icon = ICONS[item.id] ?? LayoutDashboard;
           const badge = badges[item.id];

@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileJson, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import EmptyState from '@/components/ui/EmptyState';
+import { exportJson } from '@/lib/exporters';
 import { filterEvents } from './filterEvents';
 import { normalizeEvent } from './normalizeEvent';
 import { exportEventsCsv } from './exportEventsCsv';
@@ -13,6 +15,24 @@ import EventTable from './EventTable';
 import TimelineRibbon from './TimelineRibbon';
 
 const MODE_KEY = 'securisphere_events_mode';
+const PAGE_SIZE_KEY = 'securisphere_events_page_size';
+const PAGE_SIZES = [25, 50, 100, 250];
+
+const SEV_RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1, unknown: 0 };
+
+function compareRows(a, b, key) {
+  if (key === 'severity') {
+    return (SEV_RANK[a.severity] || 0) - (SEV_RANK[b.severity] || 0);
+  }
+  if (key === 'time') {
+    return (a.timeMs || 0) - (b.timeMs || 0);
+  }
+  const av = String(a[key] ?? '').toLowerCase();
+  const bv = String(b[key] ?? '').toLowerCase();
+  if (av < bv) return -1;
+  if (av > bv) return 1;
+  return 0;
+}
 
 const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.22 } };
 
@@ -52,6 +72,19 @@ export default function EventsPage({ events = [] }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [autoScrollTop, setAutoScrollTop] = useState(true);
 
+  const [sortBy, setSortBy] = useState('time');
+  const [sortDir, setSortDir] = useState('desc');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const s = Number(sessionStorage.getItem(PAGE_SIZE_KEY));
+      if (PAGE_SIZES.includes(s)) return s;
+    } catch {
+      /* ignore */
+    }
+    return 50;
+  });
+
   const queryRef = useRef(null);
   const rowRefs = useRef([]);
   const prevLenRef = useRef(events.length);
@@ -63,6 +96,14 @@ export default function EventsPage({ events = [] }) {
       /* ignore */
     }
   }, [mode]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
+    } catch {
+      /* ignore */
+    }
+  }, [pageSize]);
 
   const filterState = useMemo(
     () => ({
@@ -83,9 +124,30 @@ export default function EventsPage({ events = [] }) {
 
   const tableEvents = useMemo(() => filterEvents(events, filterState), [events, filterState]);
 
-  const rows = useMemo(() => tableEvents.map((e, i) => normalizeEvent(e, i)), [tableEvents]);
+  const allRows = useMemo(() => tableEvents.map((e, i) => normalizeEvent(e, i)), [tableEvents]);
+
+  const sortedRows = useMemo(() => {
+    const copy = [...allRows];
+    copy.sort((a, b) => {
+      const cmp = compareRows(a, b, sortBy);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return copy;
+  }, [allRows, sortBy, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageStart = safePage * pageSize;
+  const rows = useMemo(
+    () => sortedRows.slice(pageStart, pageStart + pageSize),
+    [sortedRows, pageStart, pageSize]
+  );
 
   const canonical = useMemo(() => buildCanonicalQuery(filterState), [filterState]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [search, layer, severity, timePreset, srcIp, timeRange, sortBy, sortDir, pageSize]);
 
   useEffect(() => {
     setSelectedIndex((i) => {
@@ -93,6 +155,17 @@ export default function EventsPage({ events = [] }) {
       return Math.min(i, max);
     });
   }, [rows.length]);
+
+  const onSort = useCallback((key) => {
+    setSortBy((cur) => {
+      if (cur === key) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        return cur;
+      }
+      setSortDir(key === 'time' || key === 'severity' ? 'desc' : 'asc');
+      return key;
+    });
+  }, []);
 
   useEffect(() => {
     if (events.length > prevLenRef.current && autoScrollTop) {
@@ -193,8 +266,18 @@ export default function EventsPage({ events = [] }) {
             size="sm"
             className="border-base-800 bg-base-900 font-mono text-xs"
             onClick={() => exportEventsCsv(tableEvents)}
+            disabled={!tableEvents.length}
           >
             <Download className="h-3 w-3" /> CSV
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="border-base-800 bg-base-900 font-mono text-xs"
+            onClick={() => exportJson(tableEvents, { filename: 'securisphere-events' })}
+            disabled={!tableEvents.length}
+          >
+            <FileJson className="h-3 w-3" /> JSON
           </Button>
         </div>
       </div>
@@ -245,13 +328,42 @@ export default function EventsPage({ events = [] }) {
         <div className="border-b border-base-800 px-4 py-2 font-mono text-[10px] text-base-500">
           {mode === 'table' ? 'Dense table' : 'Filtered list (timeline window applies when set)'}
         </div>
-        <EventTable
-          rows={rows}
-          expandedId={expandedId}
-          selectedIndex={selectedIndex}
-          rowRefs={rowRefs}
-          onRowClick={onRowClick}
-        />
+        {rows.length === 0 ? (
+          <div className="p-4">
+            <EmptyState
+              icon={Inbox}
+              title={events.length === 0 ? 'No events yet' : 'No events match filters'}
+              description={
+                events.length === 0
+                  ? 'Live events will appear here once monitors emit data.'
+                  : 'Loosen filters or clear the timeline window.'
+              }
+            />
+          </div>
+        ) : (
+          <>
+            <EventTable
+              rows={rows}
+              expandedId={expandedId}
+              selectedIndex={selectedIndex}
+              rowRefs={rowRefs}
+              onRowClick={onRowClick}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={onSort}
+            />
+            <PaginationBar
+              total={sortedRows.length}
+              pageStart={pageStart}
+              pageSize={pageSize}
+              page={safePage}
+              totalPages={totalPages}
+              onPrev={() => setPage((p) => Math.max(0, p - 1))}
+              onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              onPageSize={setPageSize}
+            />
+          </>
+        )}
       </div>
 
       <p className="font-mono text-[10px] text-base-600">
@@ -261,6 +373,58 @@ export default function EventsPage({ events = [] }) {
         <kbd className="rounded border border-base-700 px-1">Enter</kbd> expand
       </p>
     </motion.div>
+  );
+}
+
+function PaginationBar({ total, pageStart, pageSize, page, totalPages, onPrev, onNext, onPageSize }) {
+  const from = total === 0 ? 0 : pageStart + 1;
+  const to = Math.min(pageStart + pageSize, total);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-base-800 px-3 py-2 font-mono text-[10px] text-base-500">
+      <span>
+        {from}–{to} of {total}
+      </span>
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1">
+          Rows
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            className="rounded border border-base-800 bg-base-950 px-1.5 py-0.5 text-base-300 outline-none focus:border-base-700"
+            aria-label="Rows per page"
+          >
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={page === 0}
+            aria-label="Previous page"
+            className="rounded border border-base-800 px-1.5 py-0.5 text-base-400 hover:text-base-200 disabled:opacity-40"
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </button>
+          <span className="px-1">
+            {page + 1}/{totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={page >= totalPages - 1}
+            aria-label="Next page"
+            className="rounded border border-base-800 px-1.5 py-0.5 text-base-400 hover:text-base-200 disabled:opacity-40"
+          >
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

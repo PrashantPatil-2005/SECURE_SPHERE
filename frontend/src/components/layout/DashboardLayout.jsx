@@ -149,6 +149,12 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-base-950 transition-colors duration-200">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[2100] focus:rounded-md focus:border focus:border-accent focus:bg-base-900 focus:px-3 focus:py-1.5 focus:text-xs focus:font-semibold focus:text-base-100"
+      >
+        Skip to main content
+      </a>
       {!isTop && (
         <ChromeBar
           activeTab={activeTab}
@@ -196,7 +202,7 @@ export default function DashboardLayout({
 
             {toolbar}
 
-            <main className="flex-1 overflow-y-auto p-6 transition-colors duration-200">{children}</main>
+            <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-6 transition-colors duration-200 focus:outline-none">{children}</main>
 
             {statusBar}
           </div>

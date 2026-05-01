@@ -80,6 +80,7 @@ export const api = {
       return j;
     }),
   getMitreMapping: () => request('/api/mitre-mapping'),
+  getMitreCoverage: () => request('/api/v2/mitre/coverage'),
   getTopologyChecks: () => request('/api/topology-checks'),
   getDashboardSummary: () => request('/api/dashboard/summary'),
   getTimeline: () => request('/api/metrics/timeline'),
@@ -104,7 +105,10 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenario, speed }),
-    }).then(r => r.json()),
+    }).then(async (r) => {
+      const body = await r.json().catch(() => ({}));
+      return { ...body, http_status: r.status, ok: r.ok };
+    }),
 
   getAttackStatus: () =>
     authFetch(`${BASE}/api/attack/status`).then(r => r.json()),
@@ -138,6 +142,29 @@ export const api = {
     authFetch(`${BASE}/api/auth/logout`, { method: 'POST' })
       .then(r => r.json())
       .catch(() => ({ status: 'error' })),
+
+  me: () =>
+    authFetch(`${BASE}/api/auth/me`).then(r => r.json()),
+
+  refreshToken: () =>
+    authFetch(`${BASE}/api/auth/refresh`, { method: 'POST' }).then(r => r.json()),
+
+  changePassword: (currentPassword, newPassword) =>
+    authFetch(`${BASE}/api/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }).then(r => r.json()),
+
+  listAuditLogins: (limit = 50) =>
+    authFetch(`${BASE}/api/auth/audit/logins?limit=${limit}`).then(r => r.json()),
+
+  listSessions: () =>
+    authFetch(`${BASE}/api/auth/sessions`).then(r => r.json()),
+
+  revokeSession: (tokenFp) =>
+    authFetch(`${BASE}/api/auth/sessions/${encodeURIComponent(tokenFp)}`, { method: 'DELETE' })
+      .then(r => r.json()),
 
   forgotPassword: (email) =>
     fetch(`${BASE}/api/auth/forgot`, {

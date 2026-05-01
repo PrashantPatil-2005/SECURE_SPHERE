@@ -25,6 +25,12 @@ import psycopg2.extras
 from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
+try:
+    from .audit import log_audit
+except Exception:
+    def log_audit(*_a, **_kw):
+        return None
+
 logger = logging.getLogger("SecuriSphereAuth")
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
@@ -44,6 +50,11 @@ _blocklist_lock = Lock()
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_.-]{3,32}$")
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+# In-memory active session table — process-local; OK for demo.
+# token (jti-like) -> { user_id, username, role, issued_at, last_seen, ua, ip }
+_sessions: dict[str, dict] = {}
+_sessions_lock = Lock()
 
 
 def _validate_password(pw: str):
@@ -83,6 +94,78 @@ def _get_db_connection():
         user=os.getenv("POSTGRES_USER", "securisphere_user"),
         password=pwd,
     )
+
+
+def _ensure_audit_schema():
+    """Create login_audit table. Append-only audit log for sign-in events."""
+    conn = None
+    try:
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS login_audit (
+                        id SERIAL PRIMARY KEY,
+                        username VARCHAR(50) NOT NULL,
+                        success BOOLEAN NOT NULL,
+                        reason VARCHAR(80),
+                        ip VARCHAR(45),
+                        user_agent VARCHAR(255),
+                        at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS login_audit_username_idx ON login_audit(username);
+                    CREATE INDEX IF NOT EXISTS login_audit_at_idx ON login_audit(at DESC);
+                    """
+                )
+    except psycopg2.Error as exc:
+        logger.error("Could not ensure login_audit schema: %s", exc)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _record_audit(username, success, reason=""):
+    try:
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+        if ip and "," in ip:
+            ip = ip.split(",")[0].strip()
+        ua = request.headers.get("User-Agent", "")[:255]
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO login_audit (username, success, reason, ip, user_agent) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (username, success, reason[:80], ip[:45], ua),
+                )
+        conn.close()
+    except Exception as exc:
+        logger.warning("Could not record audit row: %s", exc)
+
+
+def _track_session(token, payload):
+    try:
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+        if ip and "," in ip:
+            ip = ip.split(",")[0].strip()
+        ua = request.headers.get("User-Agent", "")[:255]
+        with _sessions_lock:
+            _sessions[token] = {
+                "user_id": payload.get("user_id"),
+                "username": payload.get("username"),
+                "role": payload.get("role"),
+                "issued_at": datetime.now(timezone.utc).isoformat(),
+                "ip": ip,
+                "user_agent": ua,
+            }
+            # Cap to last 1000 entries to avoid unbounded growth.
+            if len(_sessions) > 1000:
+                # Drop oldest by insertion order.
+                first = next(iter(_sessions))
+                _sessions.pop(first, None)
+    except Exception:
+        pass
 
 
 def _ensure_auth_schema():
@@ -308,10 +391,36 @@ def login():
 
     if not password_valid:
         _record_login_failure(username)
+        _ensure_audit_schema()
+        _record_audit(username, False, "invalid_credentials")
+        log_audit(
+            action="user.login_failed",
+            actor=username or "unknown",
+            actor_type="user",
+            target_type="user",
+            target_id=username,
+            detail={"reason": "invalid_credentials"},
+            severity="warning",
+            source_ip=request.remote_addr,
+        )
         return jsonify({"status": "error", "message": "Invalid username or password"}), 401
 
     _record_login_success(user["id"])
     token = _generate_token(user)
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    _track_session(token, payload)
+    _ensure_audit_schema()
+    _record_audit(username, True, "login")
+    log_audit(
+        action="user.login",
+        actor=username,
+        actor_type="user",
+        target_type="user",
+        target_id=str(user.get("id")),
+        detail={"role": user.get("role")},
+        severity="info",
+        source_ip=request.remote_addr,
+    )
 
     logger.info("User '%s' authenticated successfully", username)
     return jsonify({
@@ -403,6 +512,10 @@ def register():
             conn.close()
 
     token = _generate_token(user_row)
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    _track_session(token, payload)
+    _ensure_audit_schema()
+    _record_audit(username, True, "register")
     logger.info("Registered new user '%s'", username)
     return jsonify({
         "status": "success",
@@ -424,7 +537,191 @@ def logout():
             # Cap blocklist size to avoid unbounded growth.
             if len(_blocklist) > 10000:
                 _blocklist.clear()
+        with _sessions_lock:
+            _sessions.pop(token, None)
     return jsonify({"status": "success", "success": True})
+
+
+@auth_bp.route("/change-password", methods=["POST"])
+@token_required
+def change_password():
+    """Change current user's password. Requires current password."""
+    body = request.get_json(silent=True) or {}
+    current = body.get("current_password") or ""
+    new_pw = body.get("new_password") or ""
+
+    if not current or not new_pw:
+        return jsonify({"status": "error", "message": "Current and new password required"}), 400
+
+    pw_err = _validate_password(new_pw)
+    if pw_err:
+        return jsonify({"status": "error", "message": pw_err}), 400
+    if current == new_pw:
+        return jsonify({"status": "error", "message": "New password must differ from current"}), 400
+
+    user_id = request.current_user.get("user_id")
+    username = request.current_user.get("username", "")
+
+    conn = None
+    try:
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT password_hash FROM users WHERE id=%s", (user_id,))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"status": "error", "message": "User not found"}), 404
+                if not check_password_hash(row["password_hash"] or "", current):
+                    _ensure_audit_schema()
+                    _record_audit(username, False, "change_password_invalid")
+                    return jsonify({"status": "error", "message": "Current password incorrect"}), 401
+                cur.execute(
+                    "UPDATE users SET password_hash=%s WHERE id=%s",
+                    (generate_password_hash(new_pw), user_id),
+                )
+    except psycopg2.Error as db_err:
+        logger.error("Database error during change-password: %s", db_err)
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    _ensure_audit_schema()
+    _record_audit(username, True, "change_password")
+    logger.info("User '%s' changed password", username)
+    return jsonify({"status": "success", "success": True})
+
+
+@auth_bp.route("/audit/logins", methods=["GET"])
+@token_required
+def audit_logins():
+    """Recent login audit rows for current user. Admins see all users."""
+    _ensure_audit_schema()
+    user = request.current_user
+    is_admin = (user.get("role") == "admin")
+    limit = max(1, min(int(request.args.get("limit", 50)), 200))
+
+    conn = None
+    try:
+        conn = _get_db_connection()
+        with conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                if is_admin:
+                    cur.execute(
+                        "SELECT id, username, success, reason, ip, user_agent, at "
+                        "FROM login_audit ORDER BY at DESC LIMIT %s",
+                        (limit,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT id, username, success, reason, ip, user_agent, at "
+                        "FROM login_audit WHERE username = %s ORDER BY at DESC LIMIT %s",
+                        (user.get("username"), limit),
+                    )
+                rows = cur.fetchall() or []
+    except psycopg2.Error as db_err:
+        logger.error("Database error during audit list: %s", db_err)
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    out = [
+        {
+            "id": r["id"],
+            "username": r["username"],
+            "success": bool(r["success"]),
+            "reason": r["reason"],
+            "ip": r["ip"],
+            "user_agent": r["user_agent"],
+            "at": r["at"].isoformat() if r["at"] else None,
+        }
+        for r in rows
+    ]
+    return jsonify({"status": "success", "data": out})
+
+
+@auth_bp.route("/sessions", methods=["GET"])
+@token_required
+def list_sessions():
+    """Active sessions for current user. Admins see all."""
+    user = request.current_user
+    auth_header = request.headers.get("Authorization", "")
+    current_token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+
+    is_admin = (user.get("role") == "admin")
+    out = []
+    with _sessions_lock:
+        for tok, info in _sessions.items():
+            if not is_admin and info.get("user_id") != user.get("user_id"):
+                continue
+            out.append({
+                "token_fp": tok[-12:],  # fingerprint, not the full token
+                "username": info.get("username"),
+                "role": info.get("role"),
+                "issued_at": info.get("issued_at"),
+                "ip": info.get("ip"),
+                "user_agent": info.get("user_agent"),
+                "current": tok == current_token,
+            })
+    return jsonify({"status": "success", "data": out})
+
+
+@auth_bp.route("/sessions/<token_fp>", methods=["DELETE"])
+@token_required
+def revoke_session(token_fp):
+    """Revoke a session by token fingerprint (last 12 chars)."""
+    user = request.current_user
+    is_admin = (user.get("role") == "admin")
+    target = None
+    with _sessions_lock:
+        for tok, info in _sessions.items():
+            if tok.endswith(token_fp):
+                if not is_admin and info.get("user_id") != user.get("user_id"):
+                    return jsonify({"status": "error", "message": "Forbidden"}), 403
+                target = tok
+                break
+        if not target:
+            return jsonify({"status": "error", "message": "Session not found"}), 404
+        _sessions.pop(target, None)
+    with _blocklist_lock:
+        _blocklist.add(target)
+        if len(_blocklist) > 10000:
+            _blocklist.clear()
+    return jsonify({"status": "success", "success": True})
+
+
+@auth_bp.route("/refresh", methods=["POST"])
+@token_required
+def refresh():
+    """Issue a fresh token to a still-valid session. Old token is revoked."""
+    user = request.current_user
+    auth_header = request.headers.get("Authorization", "")
+    old_token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+
+    user_row = {
+        "id": user["user_id"],
+        "username": user["username"],
+        "role": user["role"],
+    }
+    new_token = _generate_token(user_row)
+    new_payload = jwt.decode(new_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    _track_session(new_token, new_payload)
+
+    if old_token:
+        with _blocklist_lock:
+            _blocklist.add(old_token)
+            if len(_blocklist) > 10000:
+                _blocklist.clear()
+        with _sessions_lock:
+            _sessions.pop(old_token, None)
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "token": new_token,
+        "user": user_row,
+    })
 
 
 @auth_bp.route("/forgot", methods=["POST"])

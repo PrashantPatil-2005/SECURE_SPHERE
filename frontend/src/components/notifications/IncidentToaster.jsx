@@ -77,7 +77,13 @@ export default function IncidentToaster({ incidents = [] }) {
   const visible = toasts.slice(0, MAX_VISIBLE);
 
   return (
-    <div className="pointer-events-none fixed right-4 top-16 z-[1000] flex w-[360px] flex-col gap-2">
+    <div
+      role="region"
+      aria-label="Incident notifications"
+      aria-live="polite"
+      aria-relevant="additions"
+      className="pointer-events-none fixed right-4 top-16 z-[1000] flex w-[360px] flex-col gap-2"
+    >
       <AnimatePresence initial={false}>
         {visible.map((t) => (
           <motion.div
@@ -98,9 +104,9 @@ export default function IncidentToaster({ incidents = [] }) {
                   <button
                     onClick={() => dismiss(t.id)}
                     className="text-xs opacity-60 hover:opacity-100"
-                    aria-label="dismiss"
+                    aria-label="Dismiss notification"
                   >
-                    ×
+                    <span aria-hidden="true">×</span>
                   </button>
                 </div>
                 <div className="mt-1 truncate font-mono text-xs opacity-90">

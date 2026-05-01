@@ -37,16 +37,18 @@ export default function ProfileMenu({ initial = 'A', label = 'Profile', onNaviga
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={label}
+        aria-label={`${label} menu`}
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
           'ml-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md',
           'bg-gradient-to-br from-accent to-base-700 text-[11px] font-bold text-base-950',
           'ring-offset-2 ring-offset-base-900 hover:ring-2 hover:ring-accent/30',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
           open && 'ring-2 ring-accent/50'
         )}
       >
-        {initial}
+        <span aria-hidden="true">{initial}</span>
       </button>
 
       {open && (

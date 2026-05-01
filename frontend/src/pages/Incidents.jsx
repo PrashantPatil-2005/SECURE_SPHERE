@@ -2,12 +2,14 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertTriangle, Play, ChevronDown, ChevronRight, Clock, Target,
-  Activity, StickyNote, Loader2, Network, FileText,
+  Activity, StickyNote, Loader2, Network, FileText, Download, FileJson,
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
+import EmptyState from '@/components/ui/EmptyState';
+import { exportCsv, exportJson } from '@/lib/exporters';
 import KillChainTimeline from '@/components/KillChainTimeline';
 import IncidentActions from '@/components/IncidentActions';
 import MttdPanel from '@/components/charts/MttdPanel';
@@ -55,6 +57,32 @@ function StatusBadge({ status }) {
     )}>
       {norm}
     </span>
+  );
+}
+
+// Primary MITRE technique chip — `T1110 · Brute Force`. Resolves the
+// canonical technique from inc.technique_id (backend-supplied) or falls
+// back to the first entry in inc.mitre_techniques.
+function TechniqueBadge({ incident, dense = false }) {
+  const id = incident.technique_id
+    || (Array.isArray(incident.mitre_techniques) ? incident.mitre_techniques[0] : null);
+  if (!id) return null;
+  const name = incident.technique_name;
+  const label = name ? `${id} · ${name}` : id;
+  return (
+    <a
+      href={`https://attack.mitre.org/techniques/${String(id).replace('.', '/')}`}
+      target="_blank"
+      rel="noreferrer"
+      title={`Open ${id} on attack.mitre.org`}
+      className={cn(
+        'inline-flex items-center gap-1 rounded border border-accent/35 bg-accent/[0.08] font-mono font-semibold text-accent transition-colors hover:border-accent/60 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
+        dense ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]',
+      )}
+    >
+      <Target className="h-2.5 w-2.5 opacity-80" />
+      {label}
+    </a>
   );
 }
 
@@ -151,6 +179,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
             </h3>
             <Badge variant={sev}>{sev}</Badge>
             <StatusBadge status={status} />
+            <TechniqueBadge incident={inc} />
             {mttd != null && (
               <span className="text-[10px] font-mono font-semibold text-severity-low px-2 py-0.5 rounded bg-severity-low/10 border border-severity-low/20">
                 MTTD: {Math.round(mttd)}s
@@ -196,7 +225,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
                 {richSteps?.length || servicePath.length || (Array.isArray(inc.kill_chain_steps) ? inc.kill_chain_steps.length : inc.kill_chain_steps)} kill-chain steps
               </span>
             )}
-            {inc.mitre_techniques?.map(t => (
+            {inc.mitre_techniques?.filter(t => safeString(t) !== safeString(inc.technique_id)).map(t => (
               <span key={safeString(t)} className="font-mono px-1.5 py-0.5 rounded bg-accent/[0.06] text-accent border border-accent/10">
                 {safeString(t)}
               </span>
@@ -479,6 +508,24 @@ export default function Incidents({ incidents, onReplayRequest }) {
         <h2 className="text-lg font-bold text-base-100 tracking-tight">Kill Chains / Incidents</h2>
         <span className="text-xs font-mono text-base-500">{filtered.length} / {augmentedIncidents.length} incidents</span>
         <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="font-mono text-xs"
+            onClick={() => exportCsv(filtered, { filename: 'securisphere-incidents' })}
+            disabled={!filtered.length}
+          >
+            <Download className="h-3 w-3" /> CSV
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="font-mono text-xs"
+            onClick={() => exportJson(filtered, { filename: 'securisphere-incidents' })}
+            disabled={!filtered.length}
+          >
+            <FileJson className="h-3 w-3" /> JSON
+          </Button>
           <Select value={sevFilter} onChange={e => setSevFilter(e.target.value)}>
             <option value="all">All Severity</option>
             <option value="critical">Critical</option>
@@ -525,12 +572,15 @@ export default function Incidents({ incidents, onReplayRequest }) {
           ))}
         </div>
       ) : (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-base-500 opacity-30" />
-            <p className="text-sm text-base-500">No incidents match filters</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={AlertTriangle}
+          title={augmentedIncidents.length === 0 ? 'No incidents yet' : 'No incidents match filters'}
+          description={
+            augmentedIncidents.length === 0
+              ? 'Kill chains will appear here once the engine correlates events.'
+              : 'Try a wider severity range or clear the status filter.'
+          }
+        />
       )}
     </motion.div>
   );

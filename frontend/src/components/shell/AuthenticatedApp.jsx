@@ -17,6 +17,9 @@ import TweaksPanel from '@/components/shell/TweaksPanel';
 import IncidentToaster from '@/components/notifications/IncidentToaster';
 import CriticalAlertModal from '@/components/notifications/CriticalAlertModal';
 import NotificationCenter from '@/components/notifications/NotificationCenter';
+import SessionTimeoutModal from '@/components/shell/SessionTimeoutModal';
+import KeyboardHelpModal from '@/components/shell/KeyboardHelpModal';
+import DisconnectBanner from '@/components/shell/DisconnectBanner';
 import CommandPalette from '@/components/nav/CommandPalette';
 import { CommandPaletteBridgeContext } from '@/contexts/CommandPaletteBridge';
 import { useCommandPalette } from '@/hooks/useCommandPalette';
@@ -51,8 +54,7 @@ export default function AuthenticatedApp({ onLogout }) {
   const activeTab = tabIdFromPath(location.pathname);
   const toast = useToast();
 
-  const handleLogout = useCallback(async () => {
-    if (!window.confirm('Sign out of SecuriSphere?')) return;
+  const silentLogout = useCallback(async () => {
     try { await api.logout(); } catch { /* ignore */ }
     try {
       localStorage.removeItem('securisphere_token');
@@ -61,6 +63,11 @@ export default function AuthenticatedApp({ onLogout }) {
     onLogout?.();
     navigate('/login', { replace: true });
   }, [onLogout, navigate]);
+
+  const handleLogout = useCallback(async () => {
+    if (!window.confirm('Sign out of SecuriSphere?')) return;
+    await silentLogout();
+  }, [silentLogout]);
 
   const theme = useAppStore((s) => s.theme);
   const density = useAppStore((s) => s.density);
@@ -344,6 +351,10 @@ export default function AuthenticatedApp({ onLogout }) {
 
         <IncidentToaster incidents={incidents} />
         <CriticalAlertModal incidents={incidents} />
+
+        <SessionTimeoutModal onLogout={silentLogout} />
+        <KeyboardHelpModal />
+        <DisconnectBanner connected={connected} onReconnect={refetch} />
 
         <NotificationCenter
           open={notifOpen}
