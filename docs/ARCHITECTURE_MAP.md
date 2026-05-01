@@ -3,6 +3,12 @@
 > Status snapshot generated during the 360° transformation pass.
 > Captures every service, data flow, and gap between **claimed** and **actual** behaviour.
 
+## Phase Status
+
+| Phase | Title | Status | Notes |
+|---|---|---|---|
+| 12 | Topology collector | **Complete (2026-05-01)** | `_pg_conn` audited (no nested ternaries), traffic-observed edges with 5-min TTL via `POST /topology/edge`, `risk_scores_by_service` Redis hash for service-name-keyed `threat_level` on graph nodes, drift events forwarded to `security_events` channel as supply-chain signals (MITRE T1525). |
+
 ---
 
 ## 1. Compose Surface (14 services, 1 attack profile)
@@ -62,7 +68,7 @@ target services → monitors (regex/heuristic) → redis PUBLISH security_events
 | Prompt claim | Reality | Action |
 |---|---|---|
 | "Polling every 5s" | Engine is pub/sub; no polling. Single-threaded though — bottleneck under load. | Migrate to Redis Streams + consumer groups for replay/parallelism. |
-| "Topology collector incomplete (Phase 12)" | Mostly complete: docker.from_env, snapshot persist, REST graph/services/service/{name}/history, Redis publish. **Bugs:** duplicated nested-ternary in `_pg_conn` (also in reconstructor), no traffic-observed edge inference loop, no graph-embedding drift signal. | Fix bugs, add observed-edge inference + topology drift detector. |
+| "Topology collector incomplete (Phase 12)" | **Phase 12 complete (2026-05-01).** `_pg_conn` / `_get_conn` confirmed plain `os.getenv` — nested-ternary noise gone. Observed-edge inference active: `record_observed_edge` + 5-min TTL prune merged into collector loop, exposed via idempotent `POST /topology/edge`. Threat-level on graph nodes now sourced from `risk_scores_by_service` (service-name keyed) — survives container IP churn. Drift detector publishes each event onto `security_events` (`source_layer=topology`, MITRE T1525) so the correlation engine treats supply-chain drift as first-class. | — |
 | "FastAPI backend" | Backend is Flask; only topology-collector is FastAPI. | Document; keep Flask (consumed by tests + frontend). |
 | "MTTD experiment data incomplete" | `evaluation/results/` has 9 trials from 2026-02-15. No automated baseline-vs-securisphere bench. | Add `/benchmarks` with reproducible MTTD diff. |
 | "No ML/AI layer" | True. Only HF narrator (post-hoc text). | Add Isolation Forest behavioural fingerprint + TGNN scaffold + Bayesian confidence. |
@@ -71,10 +77,10 @@ target services → monitors (regex/heuristic) → redis PUBLISH security_events
 
 ### Concrete bugs & TODOs found
 
-1. **`backend/engine/kill_chain/reconstructor.py:45-51`** — `_get_conn` has nested-ternary noise: `psycopg2.connect(os.getenv("DATABASE_URL")) if ... else psycopg2.connect(...) if ... else psycopg2.connect(...)`. Same pattern repeats in `topology_collector._pg_conn` and `app._avg_mttd_from_postgres`. Refactor to a shared helper.
+1. ~~**`backend/engine/kill_chain/reconstructor.py:45-51`** — `_get_conn` nested-ternary noise.~~ **Resolved 2026-05-01:** both `_get_conn` (kill_chain) and `_pg_conn` (topology) verified clean — plain `os.getenv("X", default)` with explicit DATABASE_URL early-return. `_avg_mttd_from_postgres` still pending shared-helper refactor.
 2. **Engine pub/sub loses messages** if subscriber drops. No consumer-group durability, no replay, no fan-out.
 3. **No structured event correlation IDs** spanning monitor → engine → incident — only `event_id` (uuid4) per event; can't trace one request through.
-4. **Topology static edges are hardcoded** in collector — no observed edges from real traffic. The `/topology/edge` POST exists but nothing calls it.
+4. ~~**Topology static edges are hardcoded** — no observed edges from real traffic.~~ **Resolved 2026-05-01:** `record_observed_edge` + `_prune_stale_observed_edges` (TTL 300 s) merged into collector loop. `POST /topology/edge` is now idempotent and refreshes the TTL on each call — callers are correlation-engine cross-service event pairs.
 5. **No OpenTelemetry** — only print/log statements.
 6. **No tests for kill-chain detection time** — `tests/test_phase*.py` exists but nothing asserts MTTD < N.
 7. **MITRE coverage is static dict** — there is no live "what % of MITRE for Containers do we cover today" page.

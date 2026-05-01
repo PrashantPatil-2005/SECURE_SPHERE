@@ -22,8 +22,9 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import docker
 import redis
@@ -112,6 +113,55 @@ _graph_edges: List[Dict[str, str]] = list(STATIC_EDGES)  # mutable edge list
 _last_updated: str = ""
 
 # ---------------------------------------------------------------------------
+# Observed-edge inference (Phase 12 completion)
+# ---------------------------------------------------------------------------
+# Observed edges decay if not refreshed — keeps the graph honest when traffic
+# stops. Static edges are never pruned; they live in STATIC_EDGES.
+OBSERVED_EDGE_TTL: int = int(os.getenv("OBSERVED_EDGE_TTL", 300))  # 5 min
+_observed_edges: Dict[Tuple[str, str], Dict[str, Any]] = {}        # (src, dst) → {"last_seen", "type"}
+
+
+def record_observed_edge(source_service: str, target_service: str,
+                         edge_type: str = "observed") -> None:
+    """Register/refresh a runtime-observed dependency edge.
+
+    Idempotent — repeated calls just refresh the TTL. Self-loops are ignored.
+    """
+    if not source_service or not target_service or source_service == target_service:
+        return
+    _observed_edges[(source_service, target_service)] = {
+        "last_seen": time.time(),
+        "type": edge_type or "observed",
+    }
+
+
+def _prune_stale_observed_edges() -> None:
+    """Drop observed edges that have not been refreshed within OBSERVED_EDGE_TTL."""
+    now = time.time()
+    stale = [k for k, v in _observed_edges.items()
+             if now - v["last_seen"] > OBSERVED_EDGE_TTL]
+    for k in stale:
+        del _observed_edges[k]
+
+
+def _merge_observed_into_graph(nodes: Dict[str, ServiceNode]) -> None:
+    """Insert any live observed edge whose endpoints exist in the graph and
+    are not already represented by a static or previously-merged edge."""
+    _prune_stale_observed_edges()
+    existing = {(e["source"], e["target"]) for e in _graph_edges}
+    for (src, dst), meta in _observed_edges.items():
+        if src not in nodes or dst not in nodes:
+            continue
+        if (src, dst) in existing:
+            continue
+        _graph_edges.append({
+            "source": src,
+            "target": dst,
+            "type": meta.get("type", "observed"),
+            "observed": True,
+        })
+
+# ---------------------------------------------------------------------------
 # Redis helper
 # ---------------------------------------------------------------------------
 
@@ -140,6 +190,49 @@ except Exception:
 
 _drift = DriftDetector(_redis)
 
+
+def _publish_drift_as_security_event(drift_event: Any) -> None:
+    """Forward a DriftDetector event onto the standard ``security_events``
+    channel using the same schema every monitor uses.
+
+    Drift events surface supply-chain-attack indicators (a service appearing,
+    edges silently rewiring, etc.). Publishing them as security_events lets
+    the correlation engine score and correlate them alongside regular
+    detections instead of living in a sidecar list.
+    """
+    try:
+        target = getattr(drift_event, "target", None) or getattr(drift_event, "service_name", None) or "unknown"
+        drift_type = getattr(drift_event, "drift_type", "topology_drift")
+        sev = getattr(drift_event, "severity", "warn")
+        # Map drift severity → SecuriSphere severity vocabulary
+        sev_map = {"info": ("low", 30), "warn": ("high", 75), "critical": ("critical", 95)}
+        sev_label, sev_score = sev_map.get(sev, ("high", 75))
+
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "source_layer": "topology",
+            "source_monitor": "topology_collector",
+            "event_category": "supply_chain",
+            "event_type": drift_type,
+            "severity": {"level": sev_label, "score": sev_score},
+            "source_entity": {"ip": None, "container_id": None, "container_name": None},
+            "target_entity": {"service": target},
+            "source_service_name": "topology-collector",
+            "destination_service_name": target,
+            "detection_details": {
+                "method": "topology_drift",
+                "confidence": 0.90,
+                "description": f"Topology drift: {drift_type} on {target}",
+                "evidence": drift_event.__dict__ if hasattr(drift_event, "__dict__") else {},
+            },
+            "correlation_tags": ["topology_drift", "supply_chain", drift_type],
+            "mitre_technique": "T1525",
+        }
+        _redis.publish("security_events", json.dumps(event, default=str))
+    except Exception as exc:
+        logger.debug("Failed to publish drift as security event: %s", exc)
+
 # ---------------------------------------------------------------------------
 # Docker collector
 # ---------------------------------------------------------------------------
@@ -165,18 +258,39 @@ def _collect_topology() -> Dict[str, ServiceNode]:
         logger.error("Docker API error listing containers: %s", exc)
         return {}
 
-    # Fetch current risk scores from Redis so we can colour nodes
+    # Fetch current risk scores from Redis so we can colour nodes.
+    # Two parallel hashes:
+    #   risk_scores_by_service — service_name → {score, threat_level} (preferred)
+    #   risk_scores_current    — service_key → full payload (legacy IP-keyed)
+    # Service-name lookup is preferred because container IPs change on restart.
+    risk_by_service: Dict[str, str] = {}
+    risk_by_ip: Dict[str, str] = {}
     try:
-        raw_risks = _redis.hgetall("risk_scores_current")
-        risk_map: Dict[str, str] = {}
-        for ip, payload in raw_risks.items():
+        raw_svc = _redis.hgetall("risk_scores_by_service")
+        for name, payload in raw_svc.items():
             try:
                 data = json.loads(payload)
-                risk_map[ip] = data.get("threat_level", "normal")
+                risk_by_service[name] = data.get("threat_level", "normal")
             except json.JSONDecodeError:
                 pass
     except Exception:
-        risk_map = {}
+        pass
+    try:
+        raw_risks = _redis.hgetall("risk_scores_current")
+        for key, payload in raw_risks.items():
+            try:
+                data = json.loads(payload)
+                # Legacy fallback: payload may be IP-keyed or service-keyed.
+                level = data.get("threat_level", "normal")
+                risk_by_ip[key] = level
+                # Some payloads also carry the service name explicitly.
+                ent_type = data.get("entity_type")
+                if ent_type == "service" and key not in risk_by_service:
+                    risk_by_service[key] = level
+            except json.JSONDecodeError:
+                pass
+    except Exception:
+        pass
 
     for container in containers:
         labels = container.labels or {}
@@ -212,12 +326,12 @@ def _collect_topology() -> Dict[str, ServiceNode]:
         except Exception:
             pass
 
-        # Enrich threat level: scan all IPs associated with this container
-        threat_level = "normal"
+        # Enrich threat level. Prefer service-name keyed risk (stable across
+        # container restarts); fall back to IP-keyed for legacy producers.
+        priority = {"normal": 0, "suspicious": 1, "threatening": 2, "critical": 3}
+        threat_level = risk_by_service.get(service_name, "normal")
         for ip in ip_addresses.values():
-            level = risk_map.get(ip, "normal")
-            # Escalate to worst level
-            priority = {"normal": 0, "suspicious": 1, "threatening": 2, "critical": 3}
+            level = risk_by_ip.get(ip, "normal")
             if priority.get(level, 0) > priority.get(threat_level, 0):
                 threat_level = level
 
@@ -317,6 +431,9 @@ async def _collector_loop() -> None:
             if fresh:
                 _service_map = fresh
                 _last_updated = datetime.utcnow().isoformat() + "Z"
+                # Merge live observed edges + drop stale ones before publish
+                # so downstream consumers see a consistent edge set.
+                _merge_observed_into_graph(fresh)
                 _publish_update(fresh)
                 _persist_snapshot(fresh)
 
@@ -337,6 +454,12 @@ async def _collector_loop() -> None:
                             len(drift_events),
                             [e.drift_type for e in drift_events],
                         )
+                        # Publish each drift on the standard security_events
+                        # channel so the correlation engine consumes drift as
+                        # a first-class supply-chain signal instead of relying
+                        # on a separate poller of /topology/drift.
+                        for drift_event in drift_events:
+                            _publish_drift_as_security_event(drift_event)
                 except Exception as exc:
                     logger.debug("Drift observe failed: %s", exc)
 
@@ -486,19 +609,25 @@ async def topology_history(limit: int = 10) -> Dict[str, Any]:
 
 
 @app.post("/topology/edge")
-async def add_observed_edge(source: str, target: str, edge_type: str = "observed") -> Dict[str, str]:
+async def add_observed_edge(source: str, target: str, edge_type: str = "observed") -> Dict[str, Any]:
     """
     Register a traffic-observed dependency edge at runtime.
+
+    Idempotent — repeated calls just refresh the edge's TTL. Edges are pruned
+    automatically once their last-seen timestamp falls outside OBSERVED_EDGE_TTL
+    (default 300 s). Self-loops are dropped silently.
 
     Called by the correlation engine when it detects cross-service event pairs
     (e.g. auth-service → api-server event correlation).
     """
-    edge = {"source": source, "target": target, "type": edge_type, "observed": True}
-    # Avoid exact duplicates
-    if edge not in _graph_edges:
-        _graph_edges.append(edge)
-        logger.info("New observed edge: %s → %s (%s)", source, target, edge_type)
-    return {"status": "ok", "source": source, "target": target}
+    record_observed_edge(source, target, edge_type)
+    return {
+        "status": "ok",
+        "source": source,
+        "target": target,
+        "type": edge_type,
+        "ttl_seconds": OBSERVED_EDGE_TTL,
+    }
 
 
 @app.get("/topology/drift")

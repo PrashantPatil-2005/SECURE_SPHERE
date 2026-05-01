@@ -37,6 +37,7 @@ import System from '@/pages/System';
 import Mitre from '@/pages/Mitre';
 import Intro from '@/pages/Intro';
 import Replay from '@/pages/Replay';
+import Audit from '@/pages/Audit';
 import Settings from '@/pages/Settings';
 
 function isTypingTarget(el) {
@@ -338,6 +339,7 @@ export default function AuthenticatedApp({ onLogout }) {
                 <Route path="/risk" element={<RiskScores riskScores={riskScores} />} />
                 <Route path="/mitre" element={<Mitre />} />
                 <Route path="/replay" element={<Replay />} />
+                <Route path="/audit" element={<Audit />} />
                 <Route path="/system" element={<System systemStatus={systemStatus} onRefresh={refetch} />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -215,15 +215,21 @@ def persist(enriched_incident: Dict[str, Any]) -> None:
         conn = _get_conn()
         with conn:
             with conn.cursor() as cur:
+                # Idempotent column upgrade — older deployments may predate
+                # the user-activity migration.
+                cur.execute(
+                    "ALTER TABLE kill_chains "
+                    "ADD COLUMN IF NOT EXISTS target_username VARCHAR(100)"
+                )
                 cur.execute(
                     """
                     INSERT INTO kill_chains (
-                        incident_id, incident_type, source_ip,
+                        incident_id, incident_type, source_ip, target_username,
                         steps, service_path, first_service, last_service,
                         mitre_techniques, first_event_at, detected_at,
                         duration_seconds, mttd_seconds, severity
                     ) VALUES (
-                        %(incident_id)s, %(incident_type)s, %(source_ip)s,
+                        %(incident_id)s, %(incident_type)s, %(source_ip)s, %(target_username)s,
                         %(steps)s, %(service_path)s, %(first_service)s, %(last_service)s,
                         %(mitre_techniques)s, %(first_event_at)s, %(detected_at)s,
                         %(duration_seconds)s, %(mttd_seconds)s, %(severity)s
@@ -232,12 +238,14 @@ def persist(enriched_incident: Dict[str, Any]) -> None:
                         steps            = EXCLUDED.steps,
                         service_path     = EXCLUDED.service_path,
                         first_event_at   = EXCLUDED.first_event_at,
-                        mttd_seconds     = EXCLUDED.mttd_seconds
+                        mttd_seconds     = EXCLUDED.mttd_seconds,
+                        target_username  = COALESCE(EXCLUDED.target_username, kill_chains.target_username)
                     """,
                     {
                         "incident_id":      enriched_incident.get("incident_id"),
                         "incident_type":    enriched_incident.get("incident_type"),
                         "source_ip":        enriched_incident.get("source_ip"),
+                        "target_username":  enriched_incident.get("target_username"),
                         "steps":            json.dumps(enriched_incident.get("kill_chain_steps", [])),
                         "service_path":     enriched_incident.get("service_path", []),
                         "first_service":    enriched_incident.get("first_service"),

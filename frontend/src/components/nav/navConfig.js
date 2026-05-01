@@ -52,7 +52,7 @@
 //   if (hit) return hit[0];
 //   return 'dashboard';
 // }
-/// @typedef {'intro'|'dashboard'|'events'|'incidents'|'topology'|'risk'|'mitre'|'system'} TabId
+/// @typedef {'intro'|'dashboard'|'events'|'incidents'|'evaluation'|'topology'|'risk'|'mitre'|'audit'|'system'} TabId
 
 /**
  * @typedef NavItem
@@ -80,10 +80,12 @@ export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', path: '/dashboard', section: 'core' },
   { id: 'events', label: 'Events', path: '/events', section: 'analysis' },
   { id: 'incidents', label: 'Incidents', path: '/incidents', section: 'analysis' },
+  { id: 'evaluation', label: 'Evaluation', path: '/evaluation', section: 'analysis' },
   { id: 'topology', label: 'Topology', path: '/topology', section: 'infra' },
   { id: 'risk', label: 'Risk', path: '/risk', section: 'analysis' },
   { id: 'mitre', label: 'MITRE', path: '/mitre', section: 'security' },
   { id: 'replay', label: 'Replay', path: '/replay', section: 'security' },
+  { id: 'audit', label: 'Audit', path: '/audit', section: 'security' },
   { id: 'system', label: 'System', path: '/system', section: 'system' },
 ];
 

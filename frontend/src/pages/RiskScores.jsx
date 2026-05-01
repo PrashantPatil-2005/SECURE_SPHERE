@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Zap, Loader2, Bot } from 'lucide-react';
+import { Zap, Loader2, Bot, User, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import RiskGauge from '@/components/charts/RiskGauge';
 import SparkLine from '@/components/charts/SparkLine';
-import { cn, threatLevelColor } from '@/lib/utils';
+import { cn, getSeverityString, relativeTime, threatLevelColor } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
@@ -15,6 +16,25 @@ export default function RiskScores({ riskScores }) {
   const entries = Object.entries(riskScores || {}).filter(([, v]) => v);
   const [explanations, setExplanations] = useState({});
   const [loadingExplanations, setLoadingExplanations] = useState({});
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancel = false;
+    const load = async () => {
+      try {
+        const data = await api.getRiskAccounts();
+        if (!cancel) setAccounts(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancel) setAccounts([]);
+      } finally {
+        if (!cancel) setAccountsLoading(false);
+      }
+    };
+    load();
+    const t = setInterval(load, 15000);
+    return () => { cancel = true; clearInterval(t); };
+  }, []);
 
   const handleExplain = async (service, score, top_events) => {
     setLoadingExplanations(prev => ({ ...prev, [service]: true }));
@@ -124,6 +144,58 @@ export default function RiskScores({ riskScores }) {
           title="No risk data yet"
           description="Risk scores accumulate as the engine ingests events from each service."
         />
+      )}
+
+      <div className="mt-6 flex items-center gap-3">
+        <Users className="h-4 w-4 text-amber-400" />
+        <h2 className="text-lg font-bold text-base-100 tracking-tight">Account Risk</h2>
+        <span className="text-xs font-mono text-base-500">
+          {accounts.length} account{accounts.length === 1 ? '' : 's'} with incidents
+        </span>
+      </div>
+
+      {accountsLoading ? (
+        <div className="flex items-center gap-2 text-xs text-base-500">
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading accounts…
+        </div>
+      ) : accounts.length === 0 ? (
+        <EmptyState
+          icon={User}
+          title="No account-linked incidents"
+          description="Incidents tied to a specific username will appear here."
+        />
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-base-800 text-left text-[10px] uppercase tracking-wider text-base-500">
+                  <th className="px-4 py-2 font-semibold">Username</th>
+                  <th className="px-4 py-2 font-semibold">Incidents</th>
+                  <th className="px-4 py-2 font-semibold">Highest Severity</th>
+                  <th className="px-4 py-2 font-semibold">Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.map((a) => {
+                  const sev = getSeverityString(a?.highest_severity) || 'high';
+                  return (
+                    <tr key={a.target_username} className="border-b border-base-800 last:border-b-0 hover:bg-base-950/50">
+                      <td className="px-4 py-2">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-amber-400">
+                          <User className="h-3.5 w-3.5" /> {a.target_username}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 font-mono tabular-nums text-base-200">{a.incident_count ?? 0}</td>
+                      <td className="px-4 py-2"><Badge variant={sev}>{sev}</Badge></td>
+                      <td className="px-4 py-2 font-mono text-[11px] text-base-400">{relativeTime(a.last_seen)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       )}
     </motion.div>
   );

@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS kill_chains (
     incident_id      UUID   NOT NULL UNIQUE,
     incident_type    VARCHAR(80),
     source_ip        VARCHAR(45),
+    target_username  VARCHAR(100),
     -- JSONB array of {service_name, event_type, timestamp, severity, mitre, source_ip, layer}
     steps            JSONB  NOT NULL DEFAULT '[]',
     -- Ordered list of service names traversed by the attack
@@ -141,6 +142,7 @@ CREATE INDEX IF NOT EXISTS idx_kc_incident_id  ON kill_chains(incident_id);
 CREATE INDEX IF NOT EXISTS idx_kc_source_ip    ON kill_chains(source_ip);
 CREATE INDEX IF NOT EXISTS idx_kc_detected_at  ON kill_chains(detected_at);
 CREATE INDEX IF NOT EXISTS idx_kc_incident_type ON kill_chains(incident_type);
+CREATE INDEX IF NOT EXISTS idx_kc_target_username ON kill_chains(target_username);
 
 -- ─── Topology Snapshot Table ──────────────────────────────────────────────
 -- Optional: persist topology snapshots for historical analysis

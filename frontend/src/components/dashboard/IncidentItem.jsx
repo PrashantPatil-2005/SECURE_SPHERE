@@ -1,3 +1,4 @@
+import { User } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import SeverityDot from './SeverityDot';
 import { formatIncidentPath, killChainStepCount } from './incidentFormat';
@@ -15,6 +16,7 @@ export default function IncidentItem({ incident, selected, onSelect }) {
   const path = formatIncidentPath(incident);
   const steps = killChainStepCount(incident);
   const sev = getSeverityString(incident?.severity);
+  const username = safeString(incident?.target_username);
   const techniques = Array.isArray(incident?.mitre_techniques) ? incident.mitre_techniques : [];
   const primaryId = safeString(incident?.technique_id) || (techniques[0] ? safeString(techniques[0]) : '');
   const primaryName = safeString(incident?.technique_name);
@@ -40,6 +42,15 @@ export default function IncidentItem({ incident, selected, onSelect }) {
             <>
               {' '}
               · {steps} step{steps === 1 ? '' : 's'}
+            </>
+          )}
+          {username && (
+            <>
+              {' '}
+              ·{' '}
+              <span className="inline-flex items-center gap-1 font-mono text-amber-400">
+                <User className="h-3 w-3" /> {username}
+              </span>
             </>
           )}
         </p>

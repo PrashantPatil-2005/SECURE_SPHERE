@@ -26,6 +26,10 @@ reset: ## DANGER: Stop all containers and permanently delete all data volumes
 health:
 	./scripts/health_check.sh
 
+backfill-severity: ## Recompute and persist severity on incidents missing a label
+	@echo "Running severity backfill against PostgreSQL…"
+	@python scripts/backfill_severity.py
+
 logs:
 	docker-compose logs -f
 
@@ -376,6 +380,12 @@ evaluate-full: ## Run complete evaluation: named scenarios + MTTD export + markd
 	@echo "Evaluation complete."
 	@echo "  Markdown table: run 'make mttd-markdown' to regenerate"
 	@echo "  CSV data:       mttd_results.csv"
+	@echo "  Dashboard view: http://localhost:3000/evaluation"
+	@echo "                  (run 'make evaluation-page' to open it)"
+
+evaluation-page: ## Open the evaluation page in browser
+	@echo "Opening evaluation page..."
+	@open http://localhost:3000/evaluation 2>/dev/null || xdg-open http://localhost:3000/evaluation 2>/dev/null || echo "Open http://localhost:3000/evaluation manually"
 
 # Phase 5: CI / quick validation
 ci: ## Smoke test + fast attack + verify incidents were detected (CI pipeline)

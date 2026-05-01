@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-04-18",
+  "overall": {
+    "mttd_raw_logs_seconds": 252.8,
+    "mttd_dashboard_seconds": 6.75,
+    "reduction_percent": 97.33,
+    "target_reduction_percent": 70.0,
+    "target_met": true,
+    "backend_correlation_latency_seconds": 0.08
+  },
+  "scenarios": [
+    {
+      "name": "Scenario A",
+      "description": "Brute Force \u2192 Credential Compromise \u2192 Data Exfiltration",
+      "mttd_raw": 247.0,
+      "mttd_dashboard": 6.00,
+      "reduction_percent": 97.57,
+      "raw_trials": [239, 255, 247],
+      "dashboard_trials": [6.01, 6.00, 6.00],
+      "raw_stddev": 6.53,
+      "dashboard_stddev": 0.005
+    },
+    {
+      "name": "Scenario B",
+      "description": "Recon \u2192 SQL Injection \u2192 Privilege Escalation",
+      "mttd_raw": 199.3,
+      "mttd_dashboard": 8.14,
+      "reduction_percent": 95.91,
+      "raw_trials": [194, 206, 198],
+      "dashboard_trials": [8.15, 8.14, 8.14],
+      "raw_stddev": 5.03,
+      "dashboard_stddev": 0.005
+    },
+    {
+      "name": "Scenario C",
+      "description": "Multi-Hop Lateral Movement (4 hops)",
+      "mttd_raw": 312.0,
+      "mttd_dashboard": 6.11,
+      "reduction_percent": 98.04,
+      "raw_trials": [305, 319, 312],
+      "dashboard_trials": [6.12, 6.13, 6.08],
+      "raw_stddev": 5.72,
+      "dashboard_stddev": 0.022
+    }
+  ],
+  "system_metrics": {
+    "trials_completed": 18,
+    "trials_total": 18,
+    "false_positives_benign": 0,
+    "detection_rate_percent": 100.0
+  },
+  "methodology_note": "Raw-log baselines use simulated analyst timing from baseline_mttd.py modeling realistic scroll/search cognitive load. Dashboard timings measured from kill_chains.mttd_seconds + UI overhead (3s poll + 1s render + 2s operator read)."
+}

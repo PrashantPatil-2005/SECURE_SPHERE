@@ -10,7 +10,7 @@ def generate_incident_report(incident: dict) -> tuple[bool, str, str]:
     Returns (success_bool, filename, report_content)
     """
     prompt = POST_INCIDENT_REPORT_PROMPT.format(incident=json.dumps(incident, indent=2))
-    report_markdown = generate_completion(prompt, max_tokens=1500)
+    report_markdown = generate_completion(prompt, max_tokens=2500)
     
     if not report_markdown:
         return False, "", "Failed to generate report"

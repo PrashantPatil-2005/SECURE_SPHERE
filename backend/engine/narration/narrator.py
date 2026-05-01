@@ -132,7 +132,7 @@ def generate_narrative(incident: Dict[str, Any]) -> Optional[str]:
             messages=[
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=800,
+            max_tokens=1500,
             temperature=0.2,
         )
         narrative = (response.choices[0].message.content or "").strip()

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import Attacker from '@/pages/Attacker';
+import Evaluation from '@/pages/Evaluation';
 import AuthenticatedApp from '@/components/shell/AuthenticatedApp';
 import ErrorBoundary from '@/components/shell/ErrorBoundary';
 import { ToastProvider } from '@/components/ui/Toaster';
@@ -35,6 +36,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/attacker" element={<Attacker />} />
+            <Route path="/evaluation" element={<Evaluation />} />
             <Route path="*" element={<Shell />} />
           </Routes>
         </BrowserRouter>

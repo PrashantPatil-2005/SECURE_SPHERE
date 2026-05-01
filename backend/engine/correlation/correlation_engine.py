@@ -58,6 +58,17 @@ except Exception as _mitre_err:
     def get_technique(tid):
         return {"technique_id": tid, "technique_name": "Unknown Technique", "tactic": "Unknown"}
 
+# Canonical severity resolver — shared with the API layer so labels never
+# diverge between persistence and presentation.
+try:
+    from severity import resolve_incident_severity, floor_severity
+except Exception as _sev_err:
+    logging.warning("severity resolver unavailable, falling back to rule-supplied severity: %s", _sev_err)
+    def resolve_incident_severity(risk_score, step_count, technique_ids=None):
+        return "high" if int(step_count or 0) >= 2 else "medium"
+    def floor_severity(current, minimum):
+        return current or minimum
+
 # System-wide audit log helper. Best-effort import — engine must keep
 # running if the audit module/table is missing.
 try:
@@ -325,6 +336,7 @@ class CorrelationEngine:
         self.rules = [
             self.rule_recon_to_exploit,
             self.rule_credential_compromise,
+            self.rule_account_pivot,
             self.rule_full_kill_chain,
             self.rule_api_auth_combined,
             self.rule_distributed_attack,
@@ -444,6 +456,19 @@ class CorrelationEngine:
         try:
             self.redis.publish("risk_scores", json.dumps(payload))
             self.redis.hset("risk_scores_current", service_key, json.dumps(payload))
+            # Parallel hash keyed by service name (not IP) so the topology
+            # collector can color graph nodes without depending on IP→name
+            # resolution that breaks across container restarts.
+            if entity_type == "service" and service_key:
+                self.redis.hset(
+                    "risk_scores_by_service",
+                    service_key,
+                    json.dumps({
+                        "score": data["score"],
+                        "threat_level": data["threat_level"],
+                        "last_update": data["last_update"],
+                    }),
+                )
         except Exception as exc:
             logger.error("Failed to publish risk score: %s", exc)
 
@@ -479,6 +504,11 @@ class CorrelationEngine:
                 for key in to_remove:
                     del self.risk_scores[key]
                     self.redis.hdel("risk_scores_current", key)
+                    # Best-effort symmetric cleanup on the service-name hash.
+                    try:
+                        self.redis.hdel("risk_scores_by_service", key)
+                    except Exception:
+                        pass
             except Exception as exc:
                 logger.error("Decay loop error: %s", exc)
 
@@ -494,6 +524,37 @@ class CorrelationEngine:
 
     def _set_cooldown(self, rule: str, key: str) -> None:
         self.incident_cooldowns[f"{rule}:{key}"] = datetime.now()
+
+    @staticmethod
+    def _extract_username(events: list) -> Optional[str]:
+        """Resolve the most relevant target username from a set of correlated events.
+
+        Priority order is suspicious_login → login_success → credential_stuffing
+        → login_failure → first available username on any event. Returns None
+        when no auth-aware event carries a username. Defensive — never raises;
+        bad events simply contribute no candidate.
+        """
+        priority_types = ("suspicious_login", "login_success",
+                          "credential_stuffing", "login_failure")
+        try:
+            for etype in priority_types:
+                for e in events or []:
+                    if not isinstance(e, dict):
+                        continue
+                    if e.get("event_type") != etype:
+                        continue
+                    u = (e.get("target_entity") or {}).get("username")
+                    if u:
+                        return str(u)
+            for e in events or []:
+                if not isinstance(e, dict):
+                    continue
+                u = (e.get("target_entity") or {}).get("username")
+                if u:
+                    return str(u)
+        except Exception as exc:
+            logger.debug("username extraction failed: %s", exc)
+        return None
 
     def create_incident(
         self,
@@ -537,6 +598,7 @@ class CorrelationEngine:
             "severity":               severity,
             "confidence":             confidence,
             "source_ip":              source_ip,
+            "target_username":        self._extract_username(correlated_events),
             "correlated_events":      [e.get("event_id") for e in correlated_events],
             "correlated_event_count": len(correlated_events),
             "layers_involved":        list(set(layers)),
@@ -551,6 +613,8 @@ class CorrelationEngine:
         }
 
         if extra:
+            # extra wins so rules that already pass an explicit
+            # target_username (e.g. account-pivot) keep precedence.
             incident.update(extra)
 
         # --- Kill chain reconstruction ---
@@ -559,6 +623,17 @@ class CorrelationEngine:
                 incident = reconstruct(incident, correlated_events)
             except Exception as exc:
                 logger.warning("Kill chain reconstruction failed: %s", exc)
+
+        # Canonical severity. Floor against the rule-supplied value so a
+        # rule that explicitly raises severity (e.g. data exfil) is never
+        # downgraded by the resolver.
+        steps = len(incident.get("kill_chain_steps") or []) or len(correlated_events)
+        resolved = resolve_incident_severity(
+            risk_score=current_risk,
+            step_count=steps,
+            technique_ids=incident.get("mitre_techniques") or [],
+        )
+        incident["severity"] = floor_severity(incident.get("severity"), resolved)
 
         # Track MITRE technique frequency
         for technique in mitre:
@@ -596,6 +671,17 @@ class CorrelationEngine:
                 incident["technique_id"]   = primary.get("technique_id")
                 incident["technique_name"] = primary.get("technique_name")
                 incident.setdefault("tactic", primary.get("tactic"))
+
+        # Severity backstop for the YAML-rule path and any incident that
+        # somehow reached publish without one. Floor against the existing
+        # value so explicit rule severity is preserved when stronger.
+        steps = len(incident.get("kill_chain_steps") or []) or len(incident.get("correlated_events") or [])
+        resolved = resolve_incident_severity(
+            risk_score=incident.get("risk_score_at_time") or incident.get("risk_score") or 0,
+            step_count=steps,
+            technique_ids=incident.get("mitre_techniques") or [],
+        )
+        incident["severity"] = floor_severity(incident.get("severity"), resolved)
 
         # Attach Bayesian confidence + per-stage breakdown so dashboards and
         # alert rules can rank incidents by posterior P(attack), not just by
@@ -727,11 +813,12 @@ class CorrelationEngine:
     # Discord alerting (with retry + rate-limit)
     # -----------------------------------------------------------------------
 
+    # Embed colors per the severity spec (matches the dashboard palette).
     _DISCORD_COLORS = {
-        "critical": 15548997,   # Red
-        "high":     15105570,   # Orange
-        "medium":   16776960,   # Yellow
-        "low":      5763719,    # Green
+        "critical": 0xFF0000,   # Red
+        "high":     0xFF6600,   # Orange
+        "medium":   0xFFAA00,   # Amber
+        "low":      0x00AA00,   # Green
     }
 
     def _persist_incident_pg(self, incident: dict) -> None:
@@ -753,7 +840,8 @@ class CorrelationEngine:
                         "ALTER TABLE correlated_incidents "
                         "ADD COLUMN IF NOT EXISTS technique_id VARCHAR(20), "
                         "ADD COLUMN IF NOT EXISTS technique_name VARCHAR(120), "
-                        "ADD COLUMN IF NOT EXISTS tactic VARCHAR(60)"
+                        "ADD COLUMN IF NOT EXISTS tactic VARCHAR(60), "
+                        "ADD COLUMN IF NOT EXISTS target_username VARCHAR(100)"
                     )
                     cur.execute(
                         """
@@ -866,7 +954,8 @@ class CorrelationEngine:
             return
         self._discord_last_sent[incident["incident_type"]] = now
 
-        color     = self._DISCORD_COLORS.get(incident.get("severity", "low"), 15548997)
+        sev       = (incident.get("severity") or "high").lower()
+        color     = self._DISCORD_COLORS.get(sev, self._DISCORD_COLORS["high"])
         mitre_str = ", ".join(incident.get("mitre_techniques", [])) or "N/A"
         primary_str = (
             f"{incident['technique_id']} · {incident['technique_name']}"
@@ -879,7 +968,7 @@ class CorrelationEngine:
         ) or "N/A"
 
         fields = [
-            {"name": "Severity",          "value": incident.get("severity", "?").upper(), "inline": True},
+            {"name": "**Severity**",       "value": f"**{sev.upper()}**",                  "inline": True},
             {"name": "Source IP",          "value": incident.get("source_ip", "?"),        "inline": True},
             {"name": "Type",               "value": incident.get("incident_type", "?"),    "inline": True},
             {"name": "Primary Technique",  "value": primary_str,                           "inline": False},
@@ -988,6 +1077,73 @@ class CorrelationEngine:
             [attacks[-1], new_event], ["auth"],
             ["T1110", "T1078", "T1003"],
             ["Force password reset", "Revoke active sessions", "Enable MFA"],
+            {"target_username": username},
+        )
+
+    # Account pivot — cross-layer username correlation. Auth login_success
+    # immediately followed by an anomalous API request from the same IP
+    # within 5 minutes is treated as a compromised-account pivot. Wazuh
+    # cannot correlate by username across container boundaries, so this
+    # rule is one of SecuriSphere's novel detections.
+    _ACCOUNT_PIVOT_API_TYPES = ("sql_injection", "path_traversal", "rate_abuse", "data_export")
+    _ACCOUNT_PIVOT_WINDOW = timedelta(minutes=5)
+
+    def rule_account_pivot(self, new_event: dict, buffer: list):
+        # Trigger only when the new event is an anomalous API request.
+        if new_event.get("source_layer") != "api":
+            return None
+        if new_event.get("event_type") not in self._ACCOUNT_PIVOT_API_TYPES:
+            return None
+        source_ip = (new_event.get("source_entity") or {}).get("ip")
+        if not source_ip:
+            return None
+
+        # Find the most recent login_success on auth-service from this IP.
+        try:
+            new_ts = datetime.fromisoformat(new_event["timestamp"].replace("Z", ""))
+        except Exception:
+            return None
+
+        recent_login = None
+        for e in reversed(buffer):
+            if e.get("source_layer") != "auth":
+                continue
+            if e.get("event_type") != "login_success":
+                continue
+            if (e.get("source_entity") or {}).get("ip") != source_ip:
+                continue
+            try:
+                ets = datetime.fromisoformat(e["timestamp"].replace("Z", ""))
+            except Exception:
+                continue
+            if 0 <= (new_ts - ets).total_seconds() <= self._ACCOUNT_PIVOT_WINDOW.total_seconds():
+                recent_login = e
+                break
+        if recent_login is None:
+            return None
+
+        username = (recent_login.get("target_entity") or {}).get("username") or "unknown"
+        cooldown_key = f"{source_ip}:{username}"
+        if self._check_cooldown("account_pivot", cooldown_key):
+            return None
+        self._set_cooldown("account_pivot", cooldown_key)
+
+        return self.create_incident(
+            "account_pivot",
+            f"🔑 Compromised Account Pivot: {username}",
+            (
+                f"Account '{username}' authenticated from {source_ip} and immediately "
+                f"issued an anomalous {new_event.get('event_type')} request — likely "
+                f"credential compromise pivoting into application abuse."
+            ),
+            "critical", 0.93, source_ip,
+            [recent_login, new_event], ["auth", "api"],
+            ["T1078", "T1021"],
+            [
+                "Force password reset and revoke active sessions",
+                "Audit recent activity for the account",
+                "Enable MFA on the account if not already required",
+            ],
             {"target_username": username},
         )
 

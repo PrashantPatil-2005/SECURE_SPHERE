@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
-  AlertTriangle, Play, ChevronDown, ChevronRight, Clock, Target,
+  AlertTriangle, Play, ChevronDown, ChevronRight, Clock, Target, User,
   Activity, StickyNote, Loader2, Network, FileText, Download, FileJson,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -207,6 +207,11 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
             {inc.source_ip && (
               <span className="font-mono text-accent inline-flex items-center gap-1">
                 <Target className="w-3 h-3" /> {safeString(inc.source_ip)}
+              </span>
+            )}
+            {inc.target_username && (
+              <span className="font-mono text-amber-400 inline-flex items-center gap-1">
+                <User className="w-3 h-3" /> {safeString(inc.target_username)}
               </span>
             )}
             {(firstService || lastService) && (

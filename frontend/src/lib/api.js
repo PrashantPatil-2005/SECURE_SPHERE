@@ -63,6 +63,8 @@ export const api = {
   getIncidents: (limit = 50) => request(`/api/incidents?limit=${limit}`),
   getMetrics: () => request('/api/metrics'),
   getRiskScores: () => request('/api/risk-scores'),
+  getRiskAccounts: () => request('/api/v2/risk/accounts'),
+  getEvaluationResults: () => request('/api/v2/evaluation/results'),
   getTopology: () =>
     request('/api/topology')
       .catch(() => request('/topology/graph'))
@@ -81,6 +83,12 @@ export const api = {
     }),
   getMitreMapping: () => request('/api/mitre-mapping'),
   getMitreCoverage: () => request('/api/v2/mitre/coverage'),
+  getAuditLogs: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    ).toString();
+    return request(`/api/v2/audit/logs${qs ? `?${qs}` : ''}`);
+  },
   getTopologyChecks: () => request('/api/topology-checks'),
   getDashboardSummary: () => request('/api/dashboard/summary'),
   getTimeline: () => request('/api/metrics/timeline'),

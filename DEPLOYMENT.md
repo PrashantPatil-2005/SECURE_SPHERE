@@ -3,6 +3,10 @@
 This document covers hardened production deployment via Docker Compose,
 Render.com, and a generic VM/Kubernetes target.
 
+> **Phase 12 (Topology collector): Complete (2026-05-01).** Observed-edge
+> inference, service-name-keyed risk overlay, and drift-as-`security_event`
+> publishing are live. See `docs/ARCHITECTURE_MAP.md` § Phase Status.
+
 ---
 
 ## 1. Pre-flight checklist
@@ -236,7 +240,7 @@ docker compose up -d --no-deps backend  # roll one service
 - No CSRF token on state-changing endpoints (rely on JWT bearer + CORS allowlist).
 - No password complexity enforcement on user signup beyond auth blueprint defaults.
 - No 2FA. Add TOTP via `pyotp` if compliance requires it.
-- Audit log table not yet implemented; Discord webhook is the current alert sink.
+- Audit log implemented (PostgreSQL `audit_log` table + `GET /api/v2/audit/logs` JWT-protected, surfaced in the `/audit` dashboard page). Discord webhook remains as a secondary alert sink for high/critical incidents.
 
 ---
 
