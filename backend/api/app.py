@@ -44,6 +44,18 @@ try:
 except ImportError:
     MITRE_MAP, TACTIC_ORDER = {}, []
 
+# --- Shared engine helpers (pg_connect / avg_mttd_seconds) ------------------
+# Docker copies engine/ → /app/; local path is backend/engine/.
+for _cand in (_here.parent, _here.parent.parent / "engine"):
+    if (_cand / "shared" / "pg_helpers.py").exists():
+        sys.path.insert(0, str(_cand))
+        break
+try:
+    from shared.pg_helpers import avg_mttd_seconds as _avg_mttd_from_postgres
+except ImportError:
+    def _avg_mttd_from_postgres():
+        return None
+
 # ... (logging setup) ...
 
 # Configure Logging
@@ -228,28 +240,6 @@ def _events_in_last_seconds(events, seconds=60):
         except Exception:
             continue
     return n
-
-
-def _avg_mttd_from_postgres():
-    """Pull AVG(mttd_seconds) from kill_chains. Returns None on failure."""
-    try:
-        import psycopg2
-        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "database"),
-            port=int(os.getenv("POSTGRES_PORT", 5432)),
-            dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
-            user=os.getenv("POSTGRES_USER", "securisphere_user"),
-            password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
-        )
-        with conn.cursor() as cur:
-            cur.execute("SELECT AVG(mttd_seconds) FROM kill_chains WHERE mttd_seconds IS NOT NULL")
-            row = cur.fetchone()
-        conn.close()
-        if row and row[0] is not None:
-            return round(float(row[0]), 3)
-    except Exception as exc:
-        logger.debug("avg_mttd postgres lookup failed: %s", exc)
-    return None
 
 
 def calculate_metrics():

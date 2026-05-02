@@ -71,6 +71,8 @@ class ReplayRecorder:
             "ts": time.time(),
             "rule": rule_name,
             "event": {
+                "event_id": triggering_event.get("event_id"),
+                "trace_id": triggering_event.get("trace_id"),
                 "event_type": triggering_event.get("event_type"),
                 "source_layer": triggering_event.get("source_layer"),
                 "source_service_name": triggering_event.get("source_service_name"),

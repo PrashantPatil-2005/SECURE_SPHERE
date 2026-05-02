@@ -128,6 +128,7 @@ class AuthMonitor:
 
         event = {
             "event_id":       str(uuid.uuid4()),
+            "trace_id":       getattr(self, "_current_trace_id", "") or str(uuid.uuid4()),
             "timestamp":      datetime.utcnow().isoformat() + "Z",
             "source_layer":   "auth",
             "source_monitor": "auth_monitor_v1",
@@ -308,6 +309,12 @@ class AuthMonitor:
             username   = data.get("username",  "unknown")
             event_type = data.get("event_type")
 
+            # Trace-id propagation: prefer one stamped at ingress
+            # (auth-service), fall back to a fresh uuid.
+            self._current_trace_id = (
+                str(data.get("trace_id") or "") or str(uuid.uuid4())
+            )
+
             if event_type == "login_failure":
                 self.success_after_failure[username]["previous_failures"] += 1
                 self.success_after_failure[username]["failure_ips"].add(source_ip)
@@ -324,6 +331,8 @@ class AuthMonitor:
             pass
         except Exception as exc:
             logger.error(f'"Error processing event: {exc}"')
+        finally:
+            self._current_trace_id = ""
 
     def run_monitor(self) -> None:
         logger.info('"Subscribing to Redis channel: auth_events"')

@@ -118,6 +118,7 @@ def enrich(ev: dict, source_ip: str) -> dict:
     return {
         **ev,
         "event_id":                 str(uuid.uuid4()),
+        "trace_id":                 ev.get("trace_id") or str(uuid.uuid4()),
         "timestamp":                ev.get("timestamp") or datetime.utcnow().isoformat() + "Z",
         "source_monitor":           "browser-monitor",
         "source_ip":                source_ip,

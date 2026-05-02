@@ -103,6 +103,7 @@ class NetworkMonitor:
 
         event = {
             "event_id": str(uuid.uuid4()),
+            "trace_id": getattr(self, "_current_trace_id", "") or str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "source_layer": "network",
             "source_monitor": "network_monitor_v1",

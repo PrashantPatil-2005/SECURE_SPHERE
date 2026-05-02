@@ -63,6 +63,7 @@ def build_event(raw: dict) -> dict:
     event_type = f"waf_{rule}_blocked" if blocked else "waf_allow"
     return {
         "event_id":        str(uuid.uuid4()),
+        "trace_id":        raw.get("trace_id") or str(uuid.uuid4()),
         "timestamp":       raw.get("ts") or (datetime.utcnow().isoformat() + "Z"),
         "source_layer":    "proxy",
         "source_monitor":  "proxy_monitor_v1",

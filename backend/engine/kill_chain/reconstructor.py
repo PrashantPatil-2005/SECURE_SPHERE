@@ -87,6 +87,8 @@ def ensure_schema() -> None:
                 cur.execute("ALTER TABLE kill_chains ADD COLUMN IF NOT EXISTS narrative TEXT;")
                 cur.execute("ALTER TABLE kill_chains ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';")
                 cur.execute("ALTER TABLE kill_chains ADD COLUMN IF NOT EXISTS analyst_note TEXT;")
+                cur.execute("ALTER TABLE kill_chains ADD COLUMN IF NOT EXISTS trace_ids TEXT[] NOT NULL DEFAULT '{}';")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_kc_trace_ids ON kill_chains USING GIN (trace_ids);")
         conn.close()
         logger.info("kill_chains schema ready")
     except Exception as exc:
@@ -188,6 +190,17 @@ def reconstruct(
     # -----------------------------------------------------------------------
     # 4. Augment incident dict
     # -----------------------------------------------------------------------
+    # Collect distinct trace_ids from constituent events; preserves first-seen
+    # order so the replay UI can scrub them in the order the analyst would
+    # naturally read them.
+    seen_trace: set = set()
+    trace_ids: List[str] = []
+    for evt in sorted_events:
+        t = evt.get("trace_id")
+        if t and t not in seen_trace:
+            seen_trace.add(t)
+            trace_ids.append(t)
+
     enriched = dict(incident)
     enriched["first_event_at"]   = sorted_events[0]["timestamp"] if sorted_events else None
     enriched["detected_at"]      = incident.get("timestamp")
@@ -196,6 +209,7 @@ def reconstruct(
     enriched["kill_chain_steps"] = steps
     enriched["first_service"]    = service_path[0]  if service_path else None
     enriched["last_service"]     = service_path[-1] if service_path else None
+    enriched["trace_ids"]        = trace_ids
 
     return enriched
 
@@ -222,24 +236,29 @@ def persist(enriched_incident: Dict[str, Any]) -> None:
                     "ADD COLUMN IF NOT EXISTS target_username VARCHAR(100)"
                 )
                 cur.execute(
+                    "ALTER TABLE kill_chains "
+                    "ADD COLUMN IF NOT EXISTS trace_ids TEXT[] NOT NULL DEFAULT '{}'"
+                )
+                cur.execute(
                     """
                     INSERT INTO kill_chains (
                         incident_id, incident_type, source_ip, target_username,
                         steps, service_path, first_service, last_service,
                         mitre_techniques, first_event_at, detected_at,
-                        duration_seconds, mttd_seconds, severity
+                        duration_seconds, mttd_seconds, severity, trace_ids
                     ) VALUES (
                         %(incident_id)s, %(incident_type)s, %(source_ip)s, %(target_username)s,
                         %(steps)s, %(service_path)s, %(first_service)s, %(last_service)s,
                         %(mitre_techniques)s, %(first_event_at)s, %(detected_at)s,
-                        %(duration_seconds)s, %(mttd_seconds)s, %(severity)s
+                        %(duration_seconds)s, %(mttd_seconds)s, %(severity)s, %(trace_ids)s
                     )
                     ON CONFLICT (incident_id) DO UPDATE SET
                         steps            = EXCLUDED.steps,
                         service_path     = EXCLUDED.service_path,
                         first_event_at   = EXCLUDED.first_event_at,
                         mttd_seconds     = EXCLUDED.mttd_seconds,
-                        target_username  = COALESCE(EXCLUDED.target_username, kill_chains.target_username)
+                        target_username  = COALESCE(EXCLUDED.target_username, kill_chains.target_username),
+                        trace_ids        = EXCLUDED.trace_ids
                     """,
                     {
                         "incident_id":      enriched_incident.get("incident_id"),
@@ -256,6 +275,7 @@ def persist(enriched_incident: Dict[str, Any]) -> None:
                         "duration_seconds": enriched_incident.get("time_span_seconds"),
                         "mttd_seconds":     enriched_incident.get("mttd_seconds"),
                         "severity":         enriched_incident.get("severity"),
+                        "trace_ids":        enriched_incident.get("trace_ids", []),
                     },
                 )
         conn.close()

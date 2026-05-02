@@ -117,6 +117,11 @@ class APIMonitor:
         self.rate_threshold  = 100
         self.enum_threshold  = 20
 
+        # Per-log-batch trace_id; overwritten at the top of every
+        # process_api_log() call so every event derived from one raw log
+        # line shares a single trace_id (Bug #3 — replay backbone).
+        self._current_trace_id: str = ""
+
         logger.info('"API Monitor initialised"')
 
     # ── Redis connection ────────────────────────────────────────────────────
@@ -160,6 +165,7 @@ class APIMonitor:
 
         event = {
             "event_id":             str(uuid.uuid4()),
+            "trace_id":             self._current_trace_id or str(uuid.uuid4()),
             "timestamp":            datetime.utcnow().isoformat() + "Z",
             "source_layer":         "api",
             "source_monitor":       "api_monitor_v1",
@@ -314,6 +320,12 @@ class APIMonitor:
             params      = data.get("params",      {})
             status_code = data.get("status_code", 0)
 
+            # Trace-id propagation: prefer one stamped at ingress (api-server),
+            # fall back to a fresh uuid so every event downstream still has one.
+            self._current_trace_id = (
+                str(data.get("trace_id") or "") or str(uuid.uuid4())
+            )
+
             self.check_sql_injection(source_ip, endpoint, params)
             self.check_path_traversal(source_ip, endpoint, params)
             self.check_rate_abuse(source_ip, endpoint)
@@ -322,6 +334,8 @@ class APIMonitor:
             pass
         except Exception as exc:
             logger.error(f'"Error processing log: {exc}"')
+        finally:
+            self._current_trace_id = ""
 
     def run_monitor(self) -> None:
         logger.info('"Subscribing to Redis channel: api_logs"')

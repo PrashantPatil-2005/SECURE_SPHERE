@@ -100,6 +100,13 @@ except Exception as _an_err:
     _ANOMALY_AVAILABLE = False
 
 try:
+    from bayesian.confidence import BayesianConfidence
+    _BAYES_AVAILABLE = True
+except Exception as _bx_err:
+    logging.warning("BayesianConfidence unavailable: %s", _bx_err)
+    _BAYES_AVAILABLE = False
+
+try:
     from predictor.heuristic import HeuristicPredictor
     _PREDICTOR_AVAILABLE = True
 except Exception as _pred_err:
@@ -255,6 +262,16 @@ class CorrelationEngine:
                 self.behavior = BehaviorTracker(self.redis, bus=self.bus)
             except Exception as exc:
                 logger.warning("BehaviorTracker init failed: %s", exc)
+
+        # Bayesian confidence scorer — stamps a posterior probability on every
+        # incident so the dashboard can rank "most likely true" first and
+        # auto-suppression can gate on it.
+        self.bayes = None
+        if _BAYES_AVAILABLE and os.getenv("BAYES_CONFIDENCE", "1") != "0":
+            try:
+                self.bayes = BayesianConfidence()
+            except Exception as exc:
+                logger.warning("BayesianConfidence init failed: %s", exc)
 
         # Threat-intel feed — populated lazily; lookup is O(1) on Redis sets.
         self.threat_intel = None
@@ -639,6 +656,20 @@ class CorrelationEngine:
         for technique in mitre:
             if technique:
                 self.stats["mitre_hits"][technique] += 1
+
+        # Bayesian posterior. Overwrites the rule-supplied confidence (which
+        # is just the rule author's hand-wave) with a calibrated value built
+        # from severity peak, corroborating-event count, and MITRE breadth.
+        # The rule's confidence is preserved as ``rule_confidence`` so the
+        # explain layer can show both numbers side-by-side.
+        if self.bayes is not None:
+            try:
+                posterior, breakdown = self.bayes.score(incident)
+                incident["rule_confidence"]      = incident.get("confidence")
+                incident["confidence"]           = round(posterior, 4)
+                incident["confidence_breakdown"] = breakdown
+            except Exception as exc:
+                logger.debug("bayesian scoring failed: %s", exc)
 
         return incident
 

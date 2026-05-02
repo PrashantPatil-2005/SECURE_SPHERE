@@ -115,6 +115,25 @@ jobs:
       - name: Smoke test — Topology Collector
         run: curl -fsS http://localhost:5080/health || true
 
+      - name: Detection-rate gate (run scenario A, assert MTTD + incident count)
+        env:
+          CI_GATE_BACKEND_URL: http://localhost:8000
+          CI_GATE_SCENARIO: a
+          CI_GATE_MIN_INCIDENTS: "1"
+          CI_GATE_MAX_MTTD_SECONDS: "30"
+          CI_GATE_MIN_DETECTION_RATE: "90"
+          CI_GATE_WAIT_SECONDS: "180"
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/ci_detection_gate.py
+
+      - name: Dump engine + backend logs on failure
+        if: failure()
+        run: |
+          echo "=== backend ==="
+          docker compose logs --tail 200 backend || true
+          echo "=== correlation-engine ==="
+          docker compose logs --tail 200 correlation-engine || true
+
       - name: Tear down
         if: always()
         run: docker compose down -v
