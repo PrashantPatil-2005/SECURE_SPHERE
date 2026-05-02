@@ -2040,6 +2040,34 @@ class CorrelationEngine:
             except Exception as exc:
                 return jsonify({"status": "error", "message": str(exc)}), 500
 
+        @app.route("/engine/clear-buffer", methods=["POST"])
+        def clear_buffer():
+            """Flush the in-memory event buffer + incident cooldowns.
+
+            Used by the evaluation harness between scenarios so leftover
+            events from a prior run don't trigger rules in the next
+            scenario (e.g. failed-login events lingering in the buffer
+            firing credential_compromise during benign traffic).
+
+            Idempotent: safe to call repeatedly. Does NOT touch risk
+            scores or recent_incidents — for the heavier wipe, use
+            /engine/reset.
+            """
+            with self.buffer_lock:
+                old_count = len(self.event_buffer)
+                self.event_buffer = []
+            cd_count = len(self.incident_cooldowns)
+            self.incident_cooldowns = {}
+            logger.info(
+                "Buffer cleared by harness (%d events, %d cooldowns dropped)",
+                old_count, cd_count,
+            )
+            return jsonify({
+                "status": "ok",
+                "cleared": old_count,
+                "cleared_cooldowns": cd_count,
+            })
+
         @app.route("/engine/reset", methods=["POST"])
         def reset():
             """

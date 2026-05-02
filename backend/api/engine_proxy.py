@@ -210,6 +210,14 @@ def mttd_report():
     return _proxy("GET", "/engine/mttd-report")
 
 
+@engine_proxy_bp.route("/clear-buffer", methods=["POST"])
+@token_required
+def clear_buffer():
+    """Used by the evaluation harness between scenarios to flush the
+    correlation engine's in-memory event buffer + incident cooldowns."""
+    return _proxy("POST", "/engine/clear-buffer")
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Catch-all for any future engine route — keeps backwards-compat with the
 # pre-blueprint catch-all proxy. Still token-protected.

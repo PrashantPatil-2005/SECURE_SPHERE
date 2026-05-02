@@ -62,6 +62,13 @@ class SecuriSphereEvaluator:
                 print(f"{Fore.GREEN}Engine reset ✓")
             except Exception as e:
                 print(f"{Fore.YELLOW}Engine reset skipped: {e}")
+            # Best-effort secondary buffer flush — defends against the race
+            # where the in-memory event_buffer briefly retains tail events
+            # from the prior scenario after /engine/reset returns.
+            try:
+                requests.post(f"{self.engine}/engine/clear-buffer", timeout=2)
+            except Exception:
+                pass
             time.sleep(10) # Wait for monitors to drain
             # Verify
             resp = requests.get(f"{self.backend}/api/metrics", timeout=5)
@@ -133,11 +140,19 @@ class SecuriSphereEvaluator:
                 dr = 0.0
         
         # 4. False Positive Rate (FPR)
+        #
+        # Honest accounting: any incident fired during a benign scenario is
+        # a false positive — not just critical-severity ones. Earlier
+        # versions counted only critical, which hid medium/high FPs (e.g.
+        # credential_compromise from a valid login arriving after stale
+        # failed-login events). Normalised over raw events so the rate is
+        # comparable across scenarios; clamped to [0, 1].
         if is_benign:
-            critical_incidents = [i for i in new_incidents if i.get('severity') == 'critical']
-            fpr = float(len(critical_incidents)) # Should be 0
+            fp_count = len(new_incidents)
+            denom = max(total_new_raw, 1)
+            fpr = round(min(fp_count / denom, 1.0), 4)
         else:
-            fpr = 0.0 
+            fpr = 0.0
             
         # 5. Alert Reduction Ratio (ARR)
         arr = 0.0
