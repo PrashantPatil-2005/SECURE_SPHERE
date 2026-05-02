@@ -69,7 +69,11 @@ def _build_prompt(incident: Dict[str, Any]) -> str:
     
     incident_id = incident.get("incident_id", "unknown")
     incident_type = incident.get("incident_type", "unknown")
-    severity = incident.get("severity", "unknown")
+    
+    # Extract just the level string if severity is an object
+    raw_severity = incident.get("severity")
+    severity = raw_severity.get("level", "unknown") if isinstance(raw_severity, dict) else str(raw_severity or "unknown")
+    
     source_ip = incident.get("source_ip", "unknown")
     mttd = incident.get("mttd_seconds")
     service_path = incident.get("service_path") or []

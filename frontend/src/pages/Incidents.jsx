@@ -97,6 +97,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [report, setReport] = useState(null);
+  const [reportError, setReportError] = useState(null);
   const [generatingReport, setGeneratingReport] = useState(false);
 
   const status = safeString(inc.status) || DEFAULT_STATUS;
@@ -142,17 +143,22 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
   };
 
   const handleGenerateReport = async () => {
+    if (generatingReport) return;
     setGeneratingReport(true);
+    setReportError(null);
     try {
       const res = await fetch(`/api/ai/report/${inc.incident_id}`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setReport(data.report);
-        }
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        setReport(data.report);
+        // Success state could be handled with a toast if available
+      } else {
+        setReportError(data.error || 'Failed to generate report. Please check AI configuration.');
       }
     } catch (e) {
       console.error('Failed to generate report', e);
+      setReportError('Network error while generating report.');
     } finally {
       setGeneratingReport(false);
     }
@@ -214,7 +220,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
                 } catch (e) {
                   return (
                     <p className="text-[11px] text-base-400 leading-relaxed border-l-2 border-base-800 pl-2 italic">
-                      {inc.narrative}
+                      {typeof inc.narrative === 'object' ? (inc.narrative.level || JSON.stringify(inc.narrative)) : String(inc.narrative)}
                     </p>
                   );
                 }
@@ -369,8 +375,14 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
                 {generatingReport ? 'Generating...' : report ? 'Regenerate Report' : 'Generate Report'}
               </Button>
             </div>
+            {reportError && (
+              <div className="mt-2 p-2 rounded bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-[10px] text-red-400">
+                <AlertTriangle className="w-3 h-3" />
+                {reportError}
+              </div>
+            )}
             {report && (
-              <div className="mt-2 p-3 bg-base-950 rounded-md border border-base-800 text-[11px] font-mono text-base-300 whitespace-pre-wrap overflow-x-auto">
+              <div className="mt-2 p-3 bg-base-950 rounded-md border border-base-800 text-[11px] font-mono text-base-300 whitespace-pre-wrap overflow-x-auto max-h-[400px]">
                 {report}
               </div>
             )}

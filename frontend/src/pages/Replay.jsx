@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
+import { safeString, getSeverityString } from '@/lib/utils';
 
 // Threat Cinema — scrub through the frames the engine recorded as the
 // incident formed. Each frame is one timestep. Autoplay reads them at
@@ -11,10 +12,10 @@ function frameSummary(frame) {
   const ev = frame.event || {};
   const cumulative = frame.cumulative || {};
   return {
-    eventType: ev.event_type,
-    service: ev.source_service_name,
-    severity: ev.severity,
-    rule: frame.rule,
+    eventType: safeString(ev.event_type),
+    service: safeString(ev.source_service_name),
+    severity: ev.severity, // keep as-is, severityBadge handles it
+    rule: safeString(frame.rule),
     delta: frame.delta || {},
     path: cumulative.service_path || [],
     techniques: cumulative.mitre_techniques || [],
@@ -23,11 +24,12 @@ function frameSummary(frame) {
 }
 
 function severityBadge(sev) {
-  const cls = sev === 'critical' ? 'bg-red-600/20 text-red-300 border-red-700'
-            : sev === 'high'     ? 'bg-orange-600/20 text-orange-300 border-orange-700'
-            : sev === 'medium'   ? 'bg-amber-600/20 text-amber-300 border-amber-700'
+  const label = getSeverityString(sev);
+  const cls = label === 'critical' ? 'bg-red-600/20 text-red-300 border-red-700'
+            : label === 'high'     ? 'bg-orange-600/20 text-orange-300 border-orange-700'
+            : label === 'medium'   ? 'bg-amber-600/20 text-amber-300 border-amber-700'
             : 'bg-slate-700/40 text-slate-200 border-slate-600';
-  return <span className={`px-2 py-0.5 rounded border text-xs font-mono ${cls}`}>{sev || '—'}</span>;
+  return <span className={`px-2 py-0.5 rounded border text-xs font-mono ${cls}`}>{label || '—'}</span>;
 }
 
 export default function Replay() {

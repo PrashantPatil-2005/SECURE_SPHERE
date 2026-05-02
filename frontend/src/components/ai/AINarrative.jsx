@@ -23,7 +23,7 @@ export default function AINarrative({ narrative }) {
     return (
       <div className="p-4 bg-base-950/50 border border-base-800 rounded-lg">
         <p className="text-[11px] text-base-400 italic leading-relaxed whitespace-pre-wrap">
-          {narrative}
+          {typeof narrative === 'object' ? (narrative.level || JSON.stringify(narrative)) : String(narrative)}
         </p>
       </div>
     );

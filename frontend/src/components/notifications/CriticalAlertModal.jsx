@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ShieldAlert, Volume2, VolumeX, X } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
+import { getSeverityString, safeString } from '@/lib/utils';
 
 const AUTO_DISMISS_MS = 6000;
 
@@ -81,13 +82,13 @@ export default function CriticalAlertModal({ incidents = [] }) {
     for (const inc of incidents) {
       const id = inc?.incident_id;
       if (!id || seenRef.current.has(id)) continue;
-      const sev = (inc.severity || '').toLowerCase();
+      const sev = getSeverityString(inc.severity).toLowerCase();
       seenRef.current.add(id);
       if (sev !== 'critical') continue;
       fresh.push({
         id,
         severity: sev,
-        type: inc.incident_type,
+        type: safeString(inc.incident_type),
         path: inc.service_path || [],
         techniques: inc.mitre_techniques || [],
         confidence: (inc.confidence || {}).posterior,
