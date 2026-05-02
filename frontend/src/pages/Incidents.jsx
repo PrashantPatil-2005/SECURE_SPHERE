@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import {
   AlertTriangle, Play, ChevronDown, ChevronRight, Clock, Target, User,
   Activity, StickyNote, Loader2, Network, FileText, Download, FileJson,
+  Shield,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
@@ -13,6 +14,7 @@ import { exportCsv, exportJson } from '@/lib/exporters';
 import KillChainTimeline from '@/components/KillChainTimeline';
 import IncidentActions from '@/components/IncidentActions';
 import MttdPanel from '@/components/charts/MttdPanel';
+import AINarrative from '@/components/ai/AINarrative';
 import {
   cn, severityColor, layerColor, formatTimestampFull, relativeTime,
   getSeverityString, safeString,
@@ -195,11 +197,29 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
             </span>
           </div>
 
-          {/* Narrative */}
+          {/* Narrative Summary */}
           {inc.narrative && (
-            <p className="text-[11px] text-base-400 mt-1 mb-3 leading-relaxed border-l-2 border-base-800 pl-2 italic">
-              {inc.narrative}
-            </p>
+            <div className="mt-1 mb-3">
+              {(() => {
+                try {
+                  const data = typeof inc.narrative === 'string' ? JSON.parse(inc.narrative) : inc.narrative;
+                  return (
+                    <div className="flex items-start gap-2 text-[11px] text-base-400 border-l-2 border-accent/40 pl-3 py-0.5 bg-accent/5 rounded-r">
+                      <Shield className="w-3 h-3 mt-0.5 text-accent shrink-0" />
+                      <p className="leading-relaxed line-clamp-2">
+                        {data.executive_summary}
+                      </p>
+                    </div>
+                  );
+                } catch (e) {
+                  return (
+                    <p className="text-[11px] text-base-400 leading-relaxed border-l-2 border-base-800 pl-2 italic">
+                      {inc.narrative}
+                    </p>
+                  );
+                }
+              })()}
+            </div>
           )}
 
           {/* Meta row */}
@@ -305,6 +325,19 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
             <DetailCell label="MTTD"
               value={mttd != null ? `${Math.round(mttd * 100) / 100}s` : '\u2014'} />
           </div>
+
+          {/* AI Narration - Structured */}
+          {inc.narrative && (
+            <div className="border-t border-base-800/50 pt-4 pb-2">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield className="w-4 h-4 text-accent" />
+                <h3 className="text-xs font-bold text-base-100 uppercase tracking-widest">
+                  AI Kill Chain Analysis
+                </h3>
+              </div>
+              <AINarrative narrative={inc.narrative} />
+            </div>
+          )}
 
           {/* Triage actions */}
           <div>
