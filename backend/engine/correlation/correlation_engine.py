@@ -1276,22 +1276,32 @@ class CorrelationEngine:
         )
 
     def rule_persistent_threat(self, new_event: dict, buffer: list):
+        """Stealth / slow-and-low detector.
+
+        Fires when ≥2 events from the same source IP are observed in the
+        rolling buffer, regardless of time spread. Designed to catch
+        low-volume probing (e.g. 3 SQLi attempts spaced 30s apart) that
+        the higher-threshold ``rule_full_kill_chain`` misses.
+
+        Cooldown prevents re-firing on the same source for the duration
+        defined in ``self.cooldown_seconds``.
+        """
         source_ip = new_event.get("source_entity", {}).get("ip")
         if not source_ip or self._check_cooldown("persistent_threat", source_ip):
             return None
         ip_events = [e for e in buffer if e.get("source_entity", {}).get("ip") == source_ip]
-        if len(ip_events) < 10:
+        if len(ip_events) < 2:
             return None
+        # Best-effort duration calc for the description; not gating.
+        duration = 0.0
         try:
             times = [datetime.fromisoformat(e["timestamp"].replace("Z", "")) for e in ip_events]
-            duration = (max(times) - min(times)).total_seconds()
+            if times:
+                duration = (max(times) - min(times)).total_seconds()
         except Exception:
-            return None
-        if duration < 300:
-            return None
+            duration = 0.0
         unique_types = len({e.get("event_type") for e in ip_events})
-        if unique_types < 3:
-            return None
+        layers = list({e.get("source_layer") for e in ip_events if e.get("source_layer")})
         self._set_cooldown("persistent_threat", source_ip)
         return self.create_incident(
             "persistent_threat",
@@ -1301,7 +1311,7 @@ class CorrelationEngine:
                 f"over {duration / 60:.1f} minutes ({unique_types} distinct attack types)."
             ),
             "high", 0.82, source_ip,
-            ip_events, list({e.get("source_layer") for e in ip_events}),
+            ip_events, layers or ["api"],
             ["T1595", "T1071"],
             ["Block IP", "Enrich via threat intelligence", "Enable full packet capture"],
         )

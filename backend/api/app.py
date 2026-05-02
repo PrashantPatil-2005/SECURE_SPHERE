@@ -1808,25 +1808,128 @@ _EVALUATION_FALLBACK = {
 }
 
 
+def _safe_float(s):
+    try:
+        if s is None or s == "" or str(s).upper() == "N/A":
+            return None
+        return float(s)
+    except Exception:
+        return None
+
+
+def _parse_evaluation_csv(path: str) -> Optional[dict]:
+    """Parse a per-scenario evaluation CSV emitted by run_evaluation.py.
+
+    Returns a payload in the same shape as ``_EVALUATION_FALLBACK`` so the
+    /evaluation page renders without branching. Returns None on any parse
+    failure (caller falls back to JSON / constant)."""
+    import csv
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+    except Exception:
+        return None
+    if not rows:
+        return None
+
+    scenarios = []
+    mttds = []
+    detection_rates = []
+    fps_benign = 0
+    for r in rows:
+        name = (r.get("Scenario") or "").strip()
+        mttd = _safe_float(r.get("MTTD (s)"))
+        det = _safe_float(r.get("Detection Rate (%)"))
+        fpr = _safe_float(r.get("FPR"))
+        if mttd is not None:
+            mttds.append(mttd)
+        if det is not None and name != "Benign Traffic":
+            detection_rates.append(det)
+        if name == "Benign Traffic" and fpr is not None and fpr > 0:
+            fps_benign += int(_safe_float(r.get("Incidents")) or 0)
+        scenarios.append({
+            "name": name,
+            "raw_events": int(_safe_float(r.get("Raw Events")) or 0),
+            "incidents": int(_safe_float(r.get("Incidents")) or 0),
+            "detection_rate_percent": det,
+            "fpr": fpr,
+            "arr_percent": _safe_float(r.get("ARR (%)")),
+            "mttd_seconds": mttd,
+            "correlation_accuracy_percent": _safe_float(r.get("Correlation Accuracy (%)")),
+        })
+
+    avg_mttd = round(sum(mttds) / len(mttds), 3) if mttds else None
+    overall_det = round(sum(detection_rates) / len(detection_rates), 3) if detection_rates else None
+    return {
+        "generated_at": os.path.basename(path),
+        "source": "csv",
+        "source_path": path,
+        "overall": {
+            "mttd_dashboard_seconds": avg_mttd,
+            "detection_rate_percent": overall_det,
+        },
+        "scenarios": scenarios,
+        "system_metrics": {
+            "trials_completed": len(rows),
+            "false_positives_benign": fps_benign,
+            "detection_rate_percent": overall_det,
+        },
+    }
+
+
+def _latest_csv_in(dirs) -> Optional[str]:
+    import glob
+    candidates = []
+    for d in dirs:
+        try:
+            candidates.extend(glob.glob(os.path.join(d, "evaluation_report_*.csv")))
+        except Exception:
+            continue
+    if not candidates:
+        return None
+    try:
+        return max(candidates, key=os.path.getmtime)
+    except Exception:
+        return None
+
+
 def _load_evaluation_report():
-    """Read evaluation/dashboard_results.json once, fall back to the bundled
-    constant on any failure. Output is cached on the function object — first
-    request loads, all subsequent requests hit the cache."""
+    """Resolve the evaluation payload. Order:
+
+      1. Latest ``evaluation_report_*.csv`` under evaluation/results/ — picks
+         up live trial runs without restarting the API.
+      2. ``evaluation/dashboard_results.json`` — curated demo snapshot.
+      3. ``_EVALUATION_FALLBACK`` constant — guarantees the page never blanks.
+
+    Cached on the function object; restart the backend to refresh."""
     cached = getattr(_load_evaluation_report, "_cache", None)
     if cached is not None:
         return cached
-    candidates = [
-        os.path.join(os.path.dirname(__file__), "..", "..", "evaluation", "dashboard_results.json"),
-        os.path.join(os.getcwd(), "evaluation", "dashboard_results.json"),
+
+    here = os.path.dirname(__file__)
+    csv_dirs = [
+        os.path.abspath(os.path.join(here, "..", "evaluation", "results")),
+        os.path.abspath(os.path.join(here, "..", "..", "evaluation", "results")),
+        os.path.join(os.getcwd(), "evaluation", "results"),
     ]
     payload = None
-    for p in candidates:
-        try:
-            with open(p, "r", encoding="utf-8") as fh:
-                payload = json.load(fh)
-            break
-        except Exception:
-            continue
+    csv_path = _latest_csv_in(csv_dirs)
+    if csv_path:
+        payload = _parse_evaluation_csv(csv_path)
+
+    if not isinstance(payload, dict):
+        json_candidates = [
+            os.path.abspath(os.path.join(here, "..", "..", "evaluation", "dashboard_results.json")),
+            os.path.join(os.getcwd(), "evaluation", "dashboard_results.json"),
+        ]
+        for p in json_candidates:
+            try:
+                with open(p, "r", encoding="utf-8") as fh:
+                    payload = json.load(fh)
+                break
+            except Exception:
+                continue
+
     if not isinstance(payload, dict):
         payload = _EVALUATION_FALLBACK
     _load_evaluation_report._cache = payload
