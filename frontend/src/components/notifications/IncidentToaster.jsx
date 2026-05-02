@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { isCorrelatedIncident } from '@/lib/utils';
 
 const MAX_VISIBLE = 4;
 const AUTO_DISMISS_MS = 7000;
@@ -45,8 +46,8 @@ export default function IncidentToaster({ incidents = [] }) {
       const id = inc?.incident_id;
       if (!id || seenRef.current.has(id)) continue;
       seenRef.current.add(id);
-      // Critical incidents are owned by CriticalAlertModal — skip here.
-      if ((inc.severity || '').toLowerCase() === 'critical') continue;
+      // Multi-stage correlated incidents are owned by CriticalAlertModal — skip here.
+      if (isCorrelatedIncident(inc)) continue;
       fresh.push({
         id,
         severity:    inc.severity,

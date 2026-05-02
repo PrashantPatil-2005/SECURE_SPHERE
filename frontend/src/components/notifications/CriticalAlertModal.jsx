@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ShieldAlert, Volume2, VolumeX, X } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
-import { getSeverityString, safeString } from '@/lib/utils';
+import { getSeverityString, safeString, isCorrelatedIncident } from '@/lib/utils';
 
 const AUTO_DISMISS_MS = 6000;
 
@@ -84,7 +84,8 @@ export default function CriticalAlertModal({ incidents = [] }) {
       if (!id || seenRef.current.has(id)) continue;
       const sev = getSeverityString(inc.severity).toLowerCase();
       seenRef.current.add(id);
-      if (sev !== 'critical') continue;
+      // Modal owns multi-stage correlated incidents only — singles go to toaster.
+      if (!isCorrelatedIncident(inc)) continue;
       fresh.push({
         id,
         severity: sev,

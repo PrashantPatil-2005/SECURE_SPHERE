@@ -98,6 +98,17 @@ export function threatLevelColor(level) {
   }
 }
 
+// Multi-stage kill-chain incidents are routed to the main-screen modal;
+// single-rule incidents go to the toaster. Backend marks chain rules with
+// 2+ stage_labels in `extra`; fall back to incident_type pattern.
+export function isCorrelatedIncident(inc) {
+  if (!inc) return false;
+  const stages = inc.stage_labels || inc.kill_chain_steps || [];
+  if (Array.isArray(stages) && stages.length >= 2) return true;
+  const t = String(inc.incident_type || '');
+  return /_to_|multi_hop|kill_chain|full_kill_chain|account_pivot|persistent_threat|distributed_attack|recon_to_exploit|credential_compromise/.test(t);
+}
+
 export function layerColor(layer) {
   switch (layer?.toLowerCase()) {
     case 'network':

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { connectSocket, disconnectSocket } from '@/lib/websocket';
 import { api } from '@/lib/api';
-import { generateFullMockData } from '@/lib/mock-data';
 
 const MAX_EVENTS = 200;
 const MAX_INCIDENTS = 100;
@@ -106,16 +105,9 @@ export function useRealtime() {
       setUsingMock(false);
       touch();
     } catch {
-      // Backend offline — use mock data
-      const mock = generateFullMockData();
-      setEvents(mock.events);
-      setIncidents(mock.incidents);
-      setRiskScores(mock.riskScores);
-      setTopology(mock.topology);
-      setMetrics(mock.metrics);
-      setTimeline(mock.timeline);
-      setUsingMock(true);
-      touch();
+      // Backend offline — keep state empty. No mock traffic; only the
+      // user-triggered attack simulator should ever populate the dashboard.
+      setUsingMock(false);
     } finally {
       setLoading(false);
     }
