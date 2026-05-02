@@ -240,6 +240,7 @@ services:
       SECURISPHERE_BACKEND_URL: http://localhost:8000
       SECURISPHERE_WEBAPP_URL: http://web-app:80
       SECURISPHERE_ENGINE_URL: http://correlation-engine:5070
+      ENGINE_URL: http://correlation-engine:5070
       SECURISPHERE_AUTHMON_URL: http://auth-monitor:5060
       ATTACK_MODE: ${ATTACK_MODE:-subprocess}
       ATTACK_TARGETS_AVAILABLE: "1"

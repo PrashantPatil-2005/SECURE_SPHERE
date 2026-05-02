@@ -22,6 +22,7 @@ monkey.patch_all()
 from auth import auth_bp, token_required, role_required
 from topology_checks import bp as topology_checks_bp
 from ai_endpoints import bp as ai_bp
+from engine_proxy import engine_proxy_bp
 from attack_simulator import SimulatorRuntime, detect_target_services_unreachable
 try:
     from audit import log_audit, query_audit
@@ -121,6 +122,7 @@ except Exception as _exc:  # graceful degradation
 app.register_blueprint(auth_bp)
 app.register_blueprint(topology_checks_bp)
 app.register_blueprint(ai_bp)
+app.register_blueprint(engine_proxy_bp)
 
 # Rate-limit login route after blueprint registration
 try:
@@ -1443,18 +1445,8 @@ def demo_status():
 # auth/cors stays handled in the API layer.
 # ============================================================
 
-@app.route('/api/engine/<path:subpath>', methods=['GET', 'POST'])
-def engine_proxy(subpath):
-    engine_url = os.getenv("SECURISPHERE_ENGINE_URL", "http://correlation-engine:5070")
-    upstream = f"{engine_url}/engine/{subpath}"
-    try:
-        if request.method == 'POST':
-            r = requests.post(upstream, json=request.get_json(silent=True), timeout=4)
-        else:
-            r = requests.get(upstream, params=request.args, timeout=4)
-        return (r.text, r.status_code, {'Content-Type': r.headers.get('content-type', 'application/json')})
-    except Exception as exc:
-        return jsonify({"status": "error", "message": f"engine unreachable: {exc}"}), 502
+# /api/engine/* proxy now lives in engine_proxy.py blueprint (token-required,
+# Authorization passthrough, graceful 503 envelope on engine outage).
 
 
 @app.route('/api/mitre-mapping')
