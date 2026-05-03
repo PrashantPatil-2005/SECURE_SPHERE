@@ -16,7 +16,7 @@ const rise = (i = 0) => ({
 
 function Stat({ value, label, sub }) {
   return (
-    <div className="rounded-lg border border-base-800 bg-base-900/60 p-4">
+    <div className="rounded-[10px] border border-base-800 bg-base-900/60 p-4">
       <div className="text-3xl font-bold tracking-tight text-base-100 tabular-nums font-mono">
         {value}
       </div>
@@ -32,7 +32,7 @@ function Feature({ icon: Icon, title, text, delay = 0 }) {
   return (
     <motion.div
       {...rise(delay)}
-      className="group rounded-lg border border-base-800 bg-base-900/40 p-4 transition-colors hover:border-accent/30 hover:bg-base-900/70"
+      className="group rounded-[10px] border border-base-800 bg-base-900/40 p-4 transition-colors hover:border-accent/30 hover:bg-base-900/70"
     >
       <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-md border border-base-800 bg-base-950 text-accent group-hover:border-accent/30">
         <Icon className="h-4 w-4" />
@@ -260,7 +260,7 @@ export default function IntroPage() {
         <h3 className="max-w-3xl text-2xl font-bold leading-tight text-base-100 md:text-3xl">
           What incumbents miss — and what we catch.
         </h3>
-        <div className="overflow-hidden rounded-lg border border-base-800 bg-base-900/40">
+        <div className="overflow-hidden rounded-[10px] border border-base-800 bg-base-900/40">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-base-800 bg-base-950/60">

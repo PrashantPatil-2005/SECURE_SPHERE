@@ -20,12 +20,16 @@ export default function IncidentList({
   const slice = incidents.slice(0, maxItems);
 
   return (
-    <section className="flex min-h-0 flex-col rounded-lg border border-base-800 bg-base-900">
-      <div className="flex items-center justify-between border-b border-base-800 px-4 py-3">
-        <h3 className="text-sm font-semibold text-base-200">{title}</h3>
+    <section className="flex min-h-0 flex-col rounded-[10px] border border-base-800 bg-base-900">
+      <div className="flex items-center justify-between border-b border-base-800 px-3.5 py-2.5">
+        <h3 className="text-[12px] font-semibold tracking-wide text-base-200">{title}</h3>
         {incidents.length > 0 && (
-          <span className="rounded-full border border-base-700 bg-base-950/50 px-2 py-0.5 font-mono text-[10px] font-semibold text-base-300">
-            {incidents.length}
+          <span className="flex items-center gap-1.5">
+            <span
+              className="dot-pulse inline-block h-1.5 w-1.5 rounded-full"
+              style={{ background: 'var(--sev-critical)', '--dot-color': 'rgba(239,68,68,0.6)' }}
+            />
+            <span className="font-mono text-[10px] text-base-500">{incidents.length}</span>
           </span>
         )}
       </div>

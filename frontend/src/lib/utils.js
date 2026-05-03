@@ -21,7 +21,7 @@ export function getSeverityString(severity) {
 // Backend emits `datetime.utcnow().isoformat()` (naive — no "Z"). Browser
 // parses naive ISO as LOCAL, producing a UTC-offset skew (e.g. IST viewers
 // saw fresh incidents as "5h ago"). Treat any naive ISO as UTC.
-function parseServerTime(iso) {
+export function parseServerTime(iso) {
   if (!iso) return null;
   const s = String(iso);
   // Already has timezone (Z or ±HH:MM) — parse as-is.
@@ -98,15 +98,27 @@ export function threatLevelColor(level) {
   }
 }
 
-// Multi-stage kill-chain incidents are routed to the main-screen modal;
-// single-rule incidents go to the toaster. Backend marks chain rules with
-// 2+ stage_labels in `extra`; fall back to incident_type pattern.
+// Full-screen modal reserved for completed kill chains emitted at the end
+// of attack scenarios a/b/c (or a multi-vector campaign). Everything else —
+// brute force, persistent threat, recon, single rule hits — is a toast.
+//
+// Source: engine/correlation/correlation_engine.py incident_type values
+// emitted by browser_kill_chain_* and full_kill_chain detectors.
+const KILL_CHAIN_TYPES = new Set([
+  'full_kill_chain',
+  'browser_bruteforce_to_exfiltration',
+  'browser_recon_to_privilege_escalation',
+  'browser_multi_hop_lateral_movement',
+]);
+
 export function isCorrelatedIncident(inc) {
   if (!inc) return false;
-  const stages = inc.stage_labels || inc.kill_chain_steps || [];
-  if (Array.isArray(stages) && stages.length >= 2) return true;
-  const t = String(inc.incident_type || '');
-  return /_to_|multi_hop|kill_chain|full_kill_chain|account_pivot|persistent_threat|distributed_attack|recon_to_exploit|credential_compromise/.test(t);
+  if (inc.is_kill_chain === true) return true;
+  const t = String(inc.incident_type || '').toLowerCase();
+  if (KILL_CHAIN_TYPES.has(t)) return true;
+  // Fallback: title prefixed with "Kill Chain" (backend convention for chain rules).
+  const title = String(inc.title || '');
+  return /\bkill\s*chain\b/i.test(title);
 }
 
 export function layerColor(layer) {

@@ -3,9 +3,13 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ShieldAlert, Volume2, VolumeX, X } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
-import { getSeverityString, safeString, isCorrelatedIncident } from '@/lib/utils';
+import { getSeverityString, safeString, isCorrelatedIncident, parseServerTime } from '@/lib/utils';
 
 const AUTO_DISMISS_MS = 6000;
+// On first mount, kill-chain incidents within this window still fire — the
+// user likely just came from /attacker (outside auth shell where this modal
+// isn't mounted) so the chain was emitted while we were unmounted.
+const FIRST_MOUNT_FRESH_MS = 60_000;
 
 function severityRing(sev) {
   switch (sev) {
@@ -66,37 +70,50 @@ export default function CriticalAlertModal({ incidents = [] }) {
   const soundVolume = useAppStore((s) => s.soundVolume);
   const toggleSound = useAppStore((s) => s.toggleSound);
 
-  // Mark all known incidents seen on first mount so a fresh load doesn't blast.
+  // Detect kill-chain incidents — both new pushes and recent kill chains
+  // present at first mount (covers /attacker → dashboard navigation).
   useEffect(() => {
-    if (initRef.current) return;
-    for (const inc of incidents) {
-      if (inc?.incident_id) seenRef.current.add(inc.incident_id);
-    }
-    initRef.current = true;
-  }, [incidents]);
-
-  // Detect new critical incidents.
-  useEffect(() => {
-    if (!initRef.current) return;
+    const now = Date.now();
+    const firstMount = !initRef.current;
     const fresh = [];
     for (const inc of incidents) {
       const id = inc?.incident_id;
       if (!id || seenRef.current.has(id)) continue;
-      const sev = getSeverityString(inc.severity).toLowerCase();
+      const isChain = isCorrelatedIncident(inc);
+
+      if (firstMount && !isChain) {
+        // Non-chain: mark seen so a refresh doesn't replay old toasts via the
+        // modal path. Toaster handles its own first-mount muting.
+        seenRef.current.add(id);
+        continue;
+      }
+      if (firstMount && isChain) {
+        // Only fire if recent — old chains from previous sessions stay quiet.
+        // Backend emits naive UTC ISO; parseServerTime appends Z so JS doesn't
+        // mis-interpret it as local time.
+        const d = parseServerTime(inc.detected_at || inc.created_at || inc.first_event_at || inc.timestamp);
+        const ts = d ? d.getTime() : 0;
+        if (!ts || now - ts > FIRST_MOUNT_FRESH_MS) {
+          seenRef.current.add(id);
+          continue;
+        }
+      }
+
       seenRef.current.add(id);
-      // Modal owns multi-stage correlated incidents only — singles go to toaster.
-      if (!isCorrelatedIncident(inc)) continue;
+      if (!isChain) continue;
+
       fresh.push({
         id,
-        severity: sev,
+        severity: getSeverityString(inc.severity).toLowerCase(),
         type: safeString(inc.incident_type),
         path: inc.service_path || [],
         techniques: inc.mitre_techniques || [],
         confidence: (inc.confidence || {}).posterior,
         mttd: inc.mttd_seconds,
-        ts: Date.now(),
+        ts: now,
       });
     }
+    initRef.current = true;
     if (fresh.length) setQueue((q) => [...q, ...fresh]);
   }, [incidents]);
 

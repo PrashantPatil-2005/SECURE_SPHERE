@@ -17,7 +17,7 @@ import KPICard from './KPICard';
  */
 export default function KPIBar({ items, className, columnsClassName }) {
   return (
-    <div className={cn('grid gap-3', columnsClassName ?? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4', className)}>
+    <div className={cn('grid gap-2.5', columnsClassName ?? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5', className)}>
       {items.map((item) => (
         <KPICard
           key={item.id}

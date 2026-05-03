@@ -14,9 +14,9 @@ export default function RiskHeatmap({ riskScores = {}, maxRows = 8, title = 'Ris
   const maxScore = slice.reduce((m, [, d]) => Math.max(m, d?.current_score || 0), 0) || 1;
 
   return (
-    <section className="flex min-h-0 flex-col rounded-lg border border-base-800 bg-base-900">
-      <div className="flex items-center justify-between border-b border-base-800 px-4 py-3">
-        <h3 className="text-sm font-semibold text-base-200">{title}</h3>
+    <section className="flex min-h-0 flex-col rounded-[10px] border border-base-800 bg-base-900">
+      <div className="flex items-center justify-between border-b border-base-800 px-3.5 py-2.5">
+        <h3 className="text-[12px] font-semibold tracking-wide text-base-200">{title}</h3>
         <span className="font-mono text-[10px] text-base-500">{entries.length} entities</span>
       </div>
       <div className="max-h-[min(40vh,320px)] space-y-3 overflow-y-auto p-4">

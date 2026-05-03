@@ -1,6 +1,6 @@
 import { Wifi, WifiOff } from 'lucide-react';
 
-export default function StatusBar({ connected, lastUpdate, eventCount = 0, incidentCount = 0, usingMock }) {
+export default function StatusBar({ connected, lastUpdate, eventCount = 0, incidentCount = 0 }) {
   return (
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-base-800 bg-base-900 px-6 font-mono text-[10px] text-base-500 transition-colors duration-200">
       <div className="flex items-center gap-4">
@@ -12,7 +12,6 @@ export default function StatusBar({ connected, lastUpdate, eventCount = 0, incid
           )}
           {connected ? 'WebSocket connected' : 'Disconnected — polling'}
         </span>
-        {usingMock && <span className="text-base-500">Mock data</span>}
       </div>
 
       <span>

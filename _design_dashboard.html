@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SecuriSphere — Security Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+/* ── CSS Token System (mirrors SecuriSphere index.css) ─────────────── */
+:root {
+  --base-50:#fafafa;--base-100:#f5f5f5;--base-200:#e5e5e5;
+  --base-300:#d4d4d4;--base-400:#a3a3a3;--base-500:#737373;
+  --base-600:#525252;--base-700:#404040;--base-800:#222222;
+  --base-900:#111111;--base-950:#0a0a0a;
+  --accent:#fafafa;--accent-hover:#ffffff;
+  --accent-muted:rgba(255,255,255,0.06);--line:#222222;
+  --surface-shadow:0 1px 2px rgba(0,0,0,.55),0 6px 16px rgba(0,0,0,.45),0 18px 40px rgba(0,0,0,.35);
+  --surface-rim:inset 0 1px 0 rgba(255,255,255,0.04);
+
+  /* Severity */
+  --sev-critical:#ef4444;--sev-critical-bg:rgba(239,68,68,0.12);--sev-critical-border:rgba(239,68,68,0.35);
+  --sev-high:#f97316;--sev-high-bg:rgba(249,115,22,0.12);--sev-high-border:rgba(249,115,22,0.35);
+  --sev-medium:#eab308;--sev-medium-bg:rgba(234,179,8,0.12);--sev-medium-border:rgba(234,179,8,0.35);
+  --sev-low:#22d3ee;--sev-low-bg:rgba(34,211,238,0.10);--sev-low-border:rgba(34,211,238,0.30);
+  --sev-info:#60a5fa;--sev-info-bg:rgba(96,165,250,0.10);--sev-info-border:rgba(96,165,250,0.30);
+
+  /* Layer */
+  --layer-network:#22d3ee;--layer-api:#a855f7;--layer-auth:#f59e0b;--layer-browser:#34d399;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;-webkit-font-smoothing:antialiased;color-scheme:dark}
+body{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--base-950);color:var(--base-200);
+  min-height:100vh;overflow-x:hidden;
+}
+.font-mono{font-family:'JetBrains Mono','Fira Code',monospace}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--base-700);border-radius:999px}
+*{scrollbar-width:thin;scrollbar-color:var(--base-700) transparent}
+
+/* Severity dot pulse */
+@keyframes dotPulse{0%,100%{box-shadow:0 0 0 0 var(--dot-clr,rgba(239,68,68,.5))}70%{box-shadow:0 0 0 6px transparent}}
+.dot-pulse{animation:dotPulse 1.8s ease-out infinite}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn .22s ease forwards}
+@keyframes slideRight{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+.slide-right{animation:slideRight .22s ease forwards}
+@keyframes flashRow{0%{background:rgba(239,68,68,.08)}100%{background:transparent}}
+.flash-row{animation:flashRow 1.4s ease forwards}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.shimmer{
+  background:linear-gradient(90deg,var(--base-700) 0%,var(--base-500) 25%,var(--base-700) 50%);
+  background-size:200% 100%;animation:shimmer 2s linear infinite;
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+/* ─── Mock Data ─────────────────────────────────────────────────────── */
+const MOCK_INCIDENTS = [
+  { id:'inc-001', title:'Brute Force → Credential Compromise → Exfiltration', severity:'critical', status:'open',
+    service:'auth-service', path:['auth-service','api-gateway','payment-service'],
+    mitre:['T1110','T1078','T1041'], technique:'T1110', technique_name:'Brute Force',
+    ts: Date.now()-120000, steps:3, layer:'auth', risk:182,
+    description:'Repeated failed logins on auth-service followed by a successful login from the same source. Attacker then accessed payment-service endpoints and exfiltrated 3,200 records.' },
+  { id:'inc-002', title:'SQL Injection → Privilege Escalation', severity:'high', status:'investigating',
+    service:'api-gateway', path:['frontend','api-gateway','payment-service'],
+    mitre:['T1190','T1068'], technique:'T1190', technique_name:'Exploit Public-Facing App',
+    ts: Date.now()-480000, steps:2, layer:'api', risk:94,
+    description:'SQLi payload detected in product search endpoint. Subsequent requests targeted admin-only routes with elevated query patterns.' },
+  { id:'inc-003', title:'Multi-Hop Lateral Movement (4 hops)', severity:'critical', status:'open',
+    service:'auth-service', path:['auth-service','api-gateway','payment-service','db'],
+    mitre:['T1021','T1046','T1068','T1041'], technique:'T1021', technique_name:'Lateral Movement',
+    ts: Date.now()-900000, steps:4, layer:'network', risk:211,
+    description:'Service-aware lateral movement detected across 4 microservices. Attack started at auth-service and pivoted through api-gateway to reach payment-service and database.' },
+  { id:'inc-004', title:'Reconnaissance → Port Scan Detected', severity:'medium', status:'acknowledged',
+    service:'frontend', path:['frontend','api-gateway'],
+    mitre:['T1595','T1046'], technique:'T1595', technique_name:'Active Scanning',
+    ts: Date.now()-2400000, steps:2, layer:'network', risk:47,
+    description:'Systematic endpoint scanning from a single source targeting multiple ports across the service mesh.' },
+  { id:'inc-005', title:'Credential Stuffing Attack', severity:'high', status:'resolved',
+    service:'auth-service', path:['auth-service'],
+    mitre:['T1110'], technique:'T1110', technique_name:'Credential Stuffing',
+    ts: Date.now()-7200000, steps:1, layer:'auth', risk:63,
+    description:'High-volume credential stuffing using known leaked password lists. 847 attempts in 90 seconds.' },
+];
+
+const MOCK_EVENTS = [
+  { id:'ev-001', type:'sql_injection', service:'api-gateway', layer:'api', severity:'critical', ts:Date.now()-8000, src:'10.0.2.4', detail:"SQLi in /products?id=1' OR '1'='1" },
+  { id:'ev-002', type:'auth_failure', service:'auth-service', layer:'auth', severity:'high', ts:Date.now()-15000, src:'10.0.2.4', detail:'Failed login: admin (attempt 14)' },
+  { id:'ev-003', type:'port_scan', service:'frontend', layer:'network', severity:'medium', ts:Date.now()-32000, src:'10.0.1.7', detail:'Sequential port probe: 80,443,5000,5001' },
+  { id:'ev-004', type:'auth_success', service:'auth-service', layer:'auth', severity:'critical', ts:Date.now()-45000, src:'10.0.2.4', detail:'Login success after 14 failures — T1078' },
+  { id:'ev-005', type:'data_access', service:'payment-service', layer:'api', severity:'critical', ts:Date.now()-58000, src:'10.0.2.4', detail:'Bulk read: 3,200 payment records' },
+  { id:'ev-006', type:'path_traversal', service:'api-gateway', layer:'api', severity:'high', ts:Date.now()-74000, src:'10.0.3.2', detail:'Traversal: ../../../etc/passwd' },
+  { id:'ev-007', type:'auth_failure', service:'auth-service', layer:'auth', severity:'medium', ts:Date.now()-92000, src:'10.0.1.9', detail:'Failed login: user@shop.com' },
+  { id:'ev-008', type:'recon', service:'api-gateway', layer:'network', severity:'medium', ts:Date.now()-115000, src:'10.0.1.7', detail:'Service discovery sweep — 12 endpoints probed' },
+  { id:'ev-009', type:'lateral_move', service:'payment-service', layer:'network', severity:'critical', ts:Date.now()-128000, src:'10.0.2.4', detail:'Unusual inter-service request from auth→payment' },
+  { id:'ev-010', type:'xss_attempt', service:'frontend', layer:'browser', severity:'medium', ts:Date.now()-144000, src:'browser', detail:'Stored XSS payload in review form' },
+  { id:'ev-011', type:'priv_esc', service:'api-gateway', layer:'api', severity:'high', ts:Date.now()-161000, src:'10.0.2.4', detail:'Admin endpoint accessed with user token' },
+  { id:'ev-012', type:'auth_failure', service:'auth-service', layer:'auth', severity:'low', ts:Date.now()-183000, src:'10.0.2.8', detail:'Failed login: test@test.com' },
+];
+
+const MOCK_SERVICES = [
+  { name:'auth-service', port:5001, status:'alert', risk:182, events:24, layer:'auth', incidents:2 },
+  { name:'api-gateway', port:5000, status:'warning', risk:94, events:18, layer:'api', incidents:1 },
+  { name:'payment-service', port:5002, status:'alert', risk:211, events:12, layer:'api', incidents:2 },
+  { name:'frontend', port:8080, status:'warning', risk:47, events:8, layer:'browser', incidents:1 },
+  { name:'correlator', port:5070, status:'healthy', risk:0, events:0, layer:'network', incidents:0 },
+  { name:'redis', port:6379, status:'healthy', risk:0, events:0, layer:'network', incidents:0 },
+];
+
+const KILL_CHAIN_STEPS = [
+  { step:'Initial Access', service:'auth-service', layer:'auth', mitre:'T1110', event:'Brute Force', severity:'high', ts: Date.now()-780000 },
+  { step:'Credential Use', service:'auth-service', layer:'auth', mitre:'T1078', event:'Valid Account', severity:'critical', ts: Date.now()-620000 },
+  { step:'Lateral Move', service:'api-gateway', layer:'api', mitre:'T1021', event:'Service Pivot', severity:'critical', ts: Date.now()-480000 },
+  { step:'Exfiltration', service:'payment-service', layer:'api', mitre:'T1041', event:'Data Exfil', severity:'critical', ts: Date.now()-120000 },
+];
+
+const TIMELINE_EVENTS = [
+  { ts: Date.now()-900000, count:2, critical:1, high:1, medium:0, label:'14:12' },
+  { ts: Date.now()-840000, count:5, critical:2, high:2, medium:1, label:'14:13' },
+  { ts: Date.now()-780000, count:8, critical:3, high:3, medium:2, label:'14:14' },
+  { ts: Date.now()-720000, count:14, critical:6, high:5, medium:3, label:'14:15' },
+  { ts: Date.now()-660000, count:9, critical:4, high:3, medium:2, label:'14:16' },
+  { ts: Date.now()-600000, count:6, critical:2, high:2, medium:2, label:'14:17' },
+  { ts: Date.now()-540000, count:11, critical:5, high:4, medium:2, label:'14:18' },
+  { ts: Date.now()-480000, count:18, critical:8, high:6, medium:4, label:'14:19' },
+  { ts: Date.now()-420000, count:13, critical:5, high:5, medium:3, label:'14:20' },
+  { ts: Date.now()-360000, count:7, critical:3, high:2, medium:2, label:'14:21' },
+  { ts: Date.now()-300000, count:4, critical:1, high:2, medium:1, label:'14:22' },
+  { ts: Date.now()-240000, count:9, critical:4, high:3, medium:2, label:'14:23' },
+  { ts: Date.now()-180000, count:16, critical:7, high:5, medium:4, label:'14:24' },
+  { ts: Date.now()-120000, count:21, critical:9, high:7, medium:5, label:'14:25' },
+  { ts: Date.now()-60000, count:12, critical:5, high:4, medium:3, label:'14:26' },
+];
+
+/* ─── Helpers ───────────────────────────────────────────────────────── */
+function relTime(ts) {
+  const s = Math.floor((Date.now()-ts)/1000);
+  if(s<60) return `${s}s ago`;
+  if(s<3600) return `${Math.floor(s/60)}m ago`;
+  return `${Math.floor(s/3600)}h ago`;
+}
+function sevColor(s){
+  return {critical:'var(--sev-critical)',high:'var(--sev-high)',medium:'var(--sev-medium)',low:'var(--sev-low)',info:'var(--sev-info)'}[s]||'var(--base-500)';
+}
+function sevBg(s){
+  return {critical:'var(--sev-critical-bg)',high:'var(--sev-high-bg)',medium:'var(--sev-medium-bg)',low:'var(--sev-low-bg)',info:'var(--sev-info-bg)'}[s]||'rgba(115,115,115,0.1)';
+}
+function sevBorder(s){
+  return {critical:'var(--sev-critical-border)',high:'var(--sev-high-border)',medium:'var(--sev-medium-border)',low:'var(--sev-low-border)',info:'var(--sev-info-border)'}[s]||'rgba(115,115,115,0.25)';
+}
+function layerColor(l){
+  return {network:'var(--layer-network)',api:'var(--layer-api)',auth:'var(--layer-auth)',browser:'var(--layer-browser)'}[l]||'var(--base-500)';
+}
+function layerBg(l){
+  return {network:'rgba(34,211,238,0.1)',api:'rgba(168,85,247,0.1)',auth:'rgba(245,158,11,0.1)',browser:'rgba(52,211,153,0.1)'}[l]||'rgba(115,115,115,0.1)';
+}
+
+/* ─── Primitive Components ─────────────────────────────────────────── */
+function Badge({children, severity, variant, style:extraStyle={}}){
+  const s = severity||variant||'default';
+  const styles = s==='default'
+    ? {background:'var(--base-800)',color:'var(--base-300)',border:'1px solid var(--base-700)'}
+    : {background:sevBg(s),color:sevColor(s),border:`1px solid ${sevBorder(s)}`};
+  if(s==='critical') styles.boxShadow=`0 0 8px -2px ${sevColor(s)}55`;
+  return (
+    <span style={{
+      display:'inline-flex',alignItems:'center',
+      padding:'1px 6px',borderRadius:4,
+      fontSize:10,fontWeight:700,letterSpacing:'0.07em',
+      textTransform:'uppercase',whiteSpace:'nowrap',
+      ...styles,...extraStyle
+    }}>{children||s}</span>
+  );
+}
+
+function SevDot({severity, pulse}){
+  const clr = sevColor(severity);
+  return (
+    <span style={{
+      display:'inline-block',width:8,height:8,borderRadius:'50%',
+      background:clr,flexShrink:0,
+      '--dot-clr':`${clr}80`,
+    }} className={pulse&&severity==='critical'?'dot-pulse':''} />
+  );
+}
+
+function Card({children, style={}, glow, className=''}){
+  return (
+    <div className={className} style={{
+      borderRadius:10,border:`1px solid ${glow?'rgba(239,68,68,0.3)':'var(--base-800)'}`,
+      background:'var(--base-900)',
+      boxShadow:'var(--surface-shadow),var(--surface-rim)',
+      transition:'border-color 200ms ease',
+      ...style
+    }}>{children}</div>
+  );
+}
+
+function CardHeader({children, style={}}){
+  return (
+    <div style={{
+      display:'flex',alignItems:'center',justifyContent:'space-between',
+      padding:'10px 14px',borderBottom:'1px solid var(--base-800)',
+      ...style
+    }}>{children}</div>
+  );
+}
+
+function CardTitle({children, icon:Icon}){
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:8}}>
+      {Icon && <Icon size={14} style={{color:'var(--base-500)'}} />}
+      <span style={{fontSize:12,fontWeight:600,color:'var(--base-200)',letterSpacing:'0.01em'}}>{children}</span>
+    </div>
+  );
+}
+
+function LiveDot(){
+  return (
+    <span style={{
+      display:'inline-block',width:6,height:6,borderRadius:'50%',
+      background:'var(--sev-critical)',
+      boxShadow:'0 0 6px var(--sev-critical)',
+      animation:'dotPulse 1.8s ease-out infinite',
+      '--dot-clr':'rgba(239,68,68,0.5)',flexShrink:0
+    }}/>
+  );
+}
+
+function Btn({children,onClick,style={},variant='ghost',icon:Icon}){
+  const base = {
+    display:'inline-flex',alignItems:'center',gap:6,
+    padding:'5px 12px',borderRadius:8,
+    fontSize:12,fontWeight:500,cursor:'pointer',border:'none',
+    transition:'all 150ms ease',letterSpacing:'0.01em',
+  };
+  const variants = {
+    ghost:{background:'transparent',color:'var(--base-400)',border:'none'},
+    outline:{background:'transparent',color:'var(--base-300)',border:'1px solid var(--base-700)'},
+    primary:{background:'var(--base-200)',color:'var(--base-900)',border:'none'},
+    danger:{background:'rgba(239,68,68,0.12)',color:'var(--sev-critical)',border:'1px solid rgba(239,68,68,0.3)'},
+  };
+  return (
+    <button onClick={onClick} style={{...base,...variants[variant],...style}}
+      onMouseEnter={e=>{
+        if(variant==='ghost') e.currentTarget.style.color='var(--base-200)';
+        if(variant==='outline'){e.currentTarget.style.borderColor='var(--base-500)';e.currentTarget.style.color='var(--base-100)';}
+      }}
+      onMouseLeave={e=>{
+        if(variant==='ghost') e.currentTarget.style.color='var(--base-400)';
+        if(variant==='outline'){e.currentTarget.style.borderColor='var(--base-700)';e.currentTarget.style.color='var(--base-300)';}
+      }}>
+      {Icon&&<Icon size={13}/>}{children}
+    </button>
+  );
+}
+
+function FilterChip({label,active,onClick}){
+  return (
+    <button onClick={onClick} style={{
+      padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,
+      cursor:'pointer',border:'1px solid',transition:'all 150ms ease',
+      background:active?'var(--base-200)':'transparent',
+      color:active?'var(--base-950)':'var(--base-500)',
+      borderColor:active?'var(--base-200)':'var(--base-700)',
+    }}>{label}</button>
+  );
+}
+
+function SevFilterChip({severity,active,onClick,count}){
+  return (
+    <button onClick={onClick} style={{
+      padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,
+      cursor:'pointer',border:'1px solid',transition:'all 150ms ease',
+      display:'flex',alignItems:'center',gap:5,
+      background:active?sevBg(severity):'transparent',
+      color:active?sevColor(severity):'var(--base-500)',
+      borderColor:active?sevBorder(severity):'var(--base-700)',
+    }}>
+      <SevDot severity={severity}/>{severity}{count!=null&&<span style={{opacity:.7}}>({count})</span>}
+    </button>
+  );
+}
+
+/* ─── Sidebar ──────────────────────────────────────────────────────── */
+const NAV_ITEMS = [
+  { id:'dashboard', label:'Dashboard', icon:'◈' },
+  { id:'events', label:'Live Events', icon:'⚡' },
+  { id:'incidents', label:'Incidents', icon:'⊘' },
+  { id:'topology', label:'Topology', icon:'⬡' },
+  { id:'risk', label:'Risk Scores', icon:'◉' },
+  { id:'mitre', label:'MITRE ATT&CK', icon:'⊕' },
+  { id:'system', label:'System', icon:'⊞' },
+];
+
+function Sidebar({active, onNav}){
+  const [hoverId, setHoverId] = useState(null);
+  return (
+    <aside style={{
+      width:200,flexShrink:0,
+      background:'var(--base-950)',
+      borderRight:'1px solid var(--base-800)',
+      display:'flex',flexDirection:'column',
+      height:'100vh',position:'sticky',top:0,
+      boxShadow:'4px 0 18px -14px rgba(0,0,0,.35)',
+    }}>
+      {/* Logo */}
+      <div style={{padding:'18px 16px 14px',borderBottom:'1px solid var(--base-800)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{
+            width:30,height:30,borderRadius:8,
+            background:'linear-gradient(135deg,rgba(239,68,68,.15),rgba(239,68,68,.05))',
+            border:'1px solid rgba(239,68,68,.25)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:14,color:'var(--sev-critical)',
+          }}>⬡</div>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:'var(--base-100)',letterSpacing:'-0.02em'}}>SecuriSphere</div>
+            <div style={{fontSize:9,color:'var(--base-600)',letterSpacing:'0.08em',textTransform:'uppercase',fontFamily:'JetBrains Mono'}}>v2.0 · SOC</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{flex:1,padding:'8px 8px',overflowY:'auto'}}>
+        <div style={{marginBottom:6,padding:'0 6px',fontSize:9,fontWeight:700,color:'var(--base-600)',letterSpacing:'0.1em',textTransform:'uppercase'}}>Navigation</div>
+        {NAV_ITEMS.map(item=>{
+          const isActive = item.id===active;
+          const isHover = item.id===hoverId;
+          return (
+            <button key={item.id} onClick={()=>onNav(item.id)}
+              onMouseEnter={()=>setHoverId(item.id)}
+              onMouseLeave={()=>setHoverId(null)}
+              style={{
+                display:'flex',alignItems:'center',gap:9,
+                width:'100%',padding:'7px 10px',borderRadius:8,
+                border:'none',cursor:'pointer',
+                marginBottom:2,textAlign:'left',
+                transition:'all 150ms ease',
+                background:isActive?'rgba(250,250,250,0.06)':isHover?'rgba(250,250,250,0.03)':'transparent',
+                color:isActive?'var(--base-100)':isHover?'var(--base-300)':'var(--base-500)',
+                boxShadow:isActive?'inset 0 0 0 1px rgba(250,250,250,.08),0 0 18px -4px rgba(250,250,250,.1)':'none',
+              }}>
+              <span style={{fontSize:13,width:16,textAlign:'center',flexShrink:0}}>{item.icon}</span>
+              <span style={{fontSize:12,fontWeight:isActive?600:400}}>{item.label}</span>
+              {item.id==='incidents'&&<span style={{marginLeft:'auto',background:'var(--sev-critical-bg)',color:'var(--sev-critical)',border:'1px solid var(--sev-critical-border)',borderRadius:999,padding:'0 5px',fontSize:9,fontWeight:700}}>3</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div style={{padding:'10px 12px',borderTop:'1px solid var(--base-800)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:8,background:'rgba(255,255,255,0.03)'}}>
+          <div style={{width:24,height:24,borderRadius:'50%',background:'var(--base-800)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'var(--base-400)',fontWeight:700}}>A</div>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--base-300)'}}>Analyst</div>
+            <div style={{fontSize:9,color:'var(--base-600)'}}>SOC Tier 2</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* ─── Top Bar ──────────────────────────────────────────────────────── */
+function TopBar({criticalCount, highCount, systemStatus}){
+  const [time, setTime] = useState(new Date());
+  useEffect(()=>{const id=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(id);},[]);
+
+  return (
+    <header style={{
+      display:'flex',alignItems:'center',justifyContent:'space-between',
+      padding:'0 20px',height:52,
+      background:'var(--base-950)',borderBottom:'1px solid var(--base-800)',
+      position:'sticky',top:0,zIndex:50,flexShrink:0,
+      boxShadow:'0 10px 26px -12px rgba(0,0,0,.75)',
+    }}>
+      {/* Left: breadcrumb */}
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <span style={{fontSize:12,fontWeight:600,color:'var(--base-200)'}}>Operations Overview</span>
+        <span style={{color:'var(--base-700)'}}>·</span>
+        <span style={{fontSize:11,color:'var(--base-500)'}}>Triage Mode</span>
+      </div>
+
+      {/* Center: alert summary pills */}
+      <div style={{display:'flex',alignItems:'center',gap:6}}>
+        <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'var(--sev-critical-bg)',border:'1px solid var(--sev-critical-border)'}}>
+          <SevDot severity="critical" pulse/>
+          <span style={{fontSize:11,fontWeight:700,color:'var(--sev-critical)',fontFamily:'JetBrains Mono'}}>{criticalCount}</span>
+          <span style={{fontSize:10,color:'var(--sev-critical)',opacity:.8}}>CRITICAL</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'var(--sev-high-bg)',border:'1px solid var(--sev-high-border)'}}>
+          <SevDot severity="high"/>
+          <span style={{fontSize:11,fontWeight:700,color:'var(--sev-high)',fontFamily:'JetBrains Mono'}}>{highCount}</span>
+          <span style={{fontSize:10,color:'var(--sev-high)',opacity:.8}}>HIGH</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 12px',borderRadius:999,background:'rgba(52,211,153,0.08)',border:'1px solid rgba(52,211,153,0.2)'}}>
+          <span style={{width:6,height:6,borderRadius:'50%',background:'#34d399',flexShrink:0,boxShadow:'0 0 6px #34d399',display:'inline-block'}}/>
+          <span style={{fontSize:10,color:'#34d399',fontWeight:600}}>SYSTEM {systemStatus}</span>
+        </div>
+      </div>
+
+      {/* Right: time + search */}
+      <div style={{display:'flex',alignItems:'center',gap:12}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderRadius:8,border:'1px solid var(--base-800)',background:'rgba(255,255,255,0.02)'}}>
+          <span style={{fontSize:11,color:'var(--base-500)'}}>⌘K</span>
+          <span style={{fontSize:11,color:'var(--base-600)'}}>Search…</span>
+        </div>
+        <div style={{fontSize:11,fontWeight:500,color:'var(--base-400)',fontFamily:'JetBrains Mono',letterSpacing:'0.03em'}}>
+          {time.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:4}}>
+          <LiveDot/>
+          <span style={{fontSize:10,color:'var(--base-500)'}}>LIVE</span>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/* ─── KPI Bar ──────────────────────────────────────────────────────── */
+function KPIBar({events, incidents}){
+  const totalEvents = events.length;
+  const criticalInc = incidents.filter(i=>i.severity==='critical').length;
+  const openInc = incidents.filter(i=>i.status==='open').length;
+  const resolvedInc = incidents.filter(i=>i.status==='resolved').length;
+  const mttd = '6.75s';
+
+  const kpis = [
+    { label:'Active Incidents', value:openInc, sub:`${criticalInc} critical`, accent:'critical' },
+    { label:'Events (window)', value:totalEvents, sub:'live feed', accent:null },
+    { label:'Avg MTTD', value:mttd, sub:'97.3% faster', accent:null },
+    { label:'Alert Reduction', value:'97.3%', sub:'vs raw logs', accent:null },
+    { label:'Resolved Today', value:resolvedInc, sub:'incidents', accent:null },
+  ];
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10}}>
+      {kpis.map((k,i)=>(
+        <div key={i} style={{
+          borderRadius:10,border:`1px solid ${k.accent?'rgba(239,68,68,0.25)':'var(--base-800)'}`,
+          background:'var(--base-900)',padding:'12px 14px',
+          boxShadow:k.accent?'inset 0 0 0 1px rgba(239,68,68,0.08),var(--surface-shadow)':'var(--surface-shadow)',
+        }}>
+          <div style={{fontSize:9,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>{k.label}</div>
+          <div style={{fontSize:24,fontWeight:700,color:k.accent?'var(--sev-critical)':'var(--base-100)',letterSpacing:'-0.02em',fontFamily:'JetBrains Mono'}}>{k.value}</div>
+          <div style={{fontSize:10,color:'var(--base-500)',marginTop:3}}>{k.sub}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── "What Happened?" Summary Card ───────────────────────────────── */
+function WhatHappenedCard({incidents}){
+  const featured = incidents.find(i=>i.severity==='critical')||incidents[0];
+  if(!featured) return null;
+
+  return (
+    <Card glow style={{padding:0,overflow:'hidden'}}>
+      <div style={{
+        background:'linear-gradient(to right,rgba(239,68,68,0.07),transparent)',
+        borderBottom:'1px solid var(--base-800)',
+        padding:'10px 14px',
+        display:'flex',alignItems:'center',justifyContent:'space-between',
+      }}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <SevDot severity="critical" pulse/>
+          <span style={{fontSize:11,fontWeight:700,color:'var(--base-300)',textTransform:'uppercase',letterSpacing:'0.07em'}}>What Happened?</span>
+          <Badge severity="critical">Live</Badge>
+        </div>
+        <span style={{fontSize:10,color:'var(--base-600)',fontFamily:'JetBrains Mono'}}>{relTime(featured.ts)}</span>
+      </div>
+      <div style={{padding:'12px 14px',display:'flex',alignItems:'flex-start',gap:14}}>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontSize:13,fontWeight:600,color:'var(--base-100)',marginBottom:5,lineHeight:1.4}}>{featured.title}</p>
+          <p style={{fontSize:12,color:'var(--base-400)',lineHeight:1.6}}>{featured.description}</p>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:10}}>
+            {featured.path.map((s,i)=>(
+              <React.Fragment key={s}>
+                <span style={{fontSize:11,fontFamily:'JetBrains Mono',color:'var(--base-300)',background:'var(--base-800)',padding:'2px 8px',borderRadius:6,border:'1px solid var(--base-700)'}}>{s}</span>
+                {i<featured.path.length-1&&<span style={{fontSize:11,color:'var(--base-600)',alignSelf:'center'}}>→</span>}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:6,flexShrink:0,minWidth:140}}>
+          <div style={{padding:'6px 10px',borderRadius:8,background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.2)',textAlign:'center'}}>
+            <div style={{fontSize:10,color:'var(--sev-critical)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.07em'}}>Risk Score</div>
+            <div style={{fontSize:20,fontWeight:700,color:'var(--sev-critical)',fontFamily:'JetBrains Mono'}}>{featured.risk}</div>
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+            {featured.mitre.map(t=>(
+              <span key={t} style={{fontSize:9,fontFamily:'JetBrains Mono',padding:'2px 6px',borderRadius:4,background:'rgba(250,250,250,0.05)',border:'1px solid rgba(250,250,250,0.1)',color:'var(--base-300)'}}>{t}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Alerts Panel ─────────────────────────────────────────────────── */
+function AlertsPanel({incidents, selectedId, onSelect, filters, onFilterChange}){
+  const severities = ['critical','high','medium','low'];
+  const filtered = incidents.filter(inc=>{
+    if(filters.severity&&inc.severity!==filters.severity) return false;
+    if(filters.service&&inc.service!==filters.service) return false;
+    if(filters.status&&inc.status!==filters.status) return false;
+    return true;
+  });
+
+  return (
+    <Card style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <CardHeader>
+        <CardTitle>Alerts</CardTitle>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <LiveDot/><span style={{fontSize:10,color:'var(--base-500)'}}>{filtered.length}/{incidents.length}</span>
+        </div>
+      </CardHeader>
+
+      {/* Severity filter strip */}
+      <div style={{padding:'8px 10px',borderBottom:'1px solid var(--base-800)',display:'flex',flexWrap:'wrap',gap:5}}>
+        <FilterChip label="All" active={!filters.severity} onClick={()=>onFilterChange({...filters,severity:''})} />
+        {severities.map(s=>{
+          const cnt = incidents.filter(i=>i.severity===s).length;
+          return <SevFilterChip key={s} severity={s} count={cnt} active={filters.severity===s} onClick={()=>onFilterChange({...filters,severity:filters.severity===s?'':s})} />;
+        })}
+      </div>
+
+      {/* List */}
+      <div style={{flex:1,overflowY:'auto',padding:'4px'}}>
+        {filtered.map((inc,idx)=>{
+          const isSel = inc.id===selectedId;
+          return (
+            <button key={inc.id} onClick={()=>onSelect(inc.id)}
+              className={idx===0?'flash-row':''}
+              style={{
+                display:'flex',alignItems:'flex-start',gap:10,width:'100%',
+                padding:'10px 10px',borderRadius:8,border:'1px solid',textAlign:'left',
+                cursor:'pointer',marginBottom:3,transition:'all 150ms ease',
+                background:isSel?'rgba(250,250,250,0.05)':'transparent',
+                borderColor:isSel?'rgba(250,250,250,0.1)':'transparent',
+                boxShadow:isSel?'inset 0 0 0 1px rgba(250,250,250,0.06)':'none',
+              }}
+              onMouseEnter={e=>{if(!isSel){e.currentTarget.style.background='rgba(255,255,255,0.02)';e.currentTarget.style.borderColor='var(--base-800)';}}}
+              onMouseLeave={e=>{if(!isSel){e.currentTarget.style.background='transparent';e.currentTarget.style.borderColor='transparent';}}}>
+              <div style={{paddingTop:3}}><SevDot severity={inc.severity} pulse={inc.severity==='critical'}/></div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600,color:'var(--base-200)',lineHeight:1.3,marginBottom:3}}>{inc.title}</div>
+                <div style={{fontSize:10,color:'var(--base-500)',marginBottom:5,fontFamily:'JetBrains Mono'}}>
+                  {inc.service} · {inc.steps} step{inc.steps!==1?'s':''}
+                </div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                  {inc.mitre.slice(0,3).map(t=>(
+                    <span key={t} style={{fontSize:9,fontFamily:'JetBrains Mono',padding:'1px 5px',borderRadius:3,background:'rgba(250,250,250,0.04)',border:'1px solid rgba(250,250,250,0.08)',color:'var(--base-400)'}}>{t}</span>
+                  ))}
+                </div>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5,flexShrink:0}}>
+                <Badge severity={inc.severity}>{inc.severity}</Badge>
+                <span style={{fontSize:9,color:'var(--base-600)',fontFamily:'JetBrains Mono'}}>{relTime(inc.ts)}</span>
+                <Badge variant="default" style={{fontSize:8,padding:'1px 5px'}}>{inc.status}</Badge>
+              </div>
+            </button>
+          );
+        })}
+        {filtered.length===0&&(
+          <div style={{padding:'32px 0',textAlign:'center',color:'var(--base-600)',fontSize:12}}>No alerts match filters</div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Detail Drawer ────────────────────────────────────────────────── */
+function DetailDrawer({incident, onClose}){
+  if(!incident) return null;
+  return (
+    <div className="slide-right" style={{
+      background:'var(--base-950)',border:'1px solid var(--base-800)',
+      borderRadius:10,boxShadow:'var(--surface-shadow)',
+      display:'flex',flexDirection:'column',height:'100%',
+      overflow:'hidden',
+    }}>
+      {/* Header */}
+      <div style={{padding:'12px 14px',borderBottom:'1px solid var(--base-800)',background:'linear-gradient(to right,rgba(239,68,68,0.05),transparent)'}}>
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+              <SevDot severity={incident.severity} pulse={incident.severity==='critical'}/>
+              <Badge severity={incident.severity}>{incident.severity}</Badge>
+              <Badge variant="default" style={{fontSize:8}}>{incident.status}</Badge>
+            </div>
+            <div style={{fontSize:13,fontWeight:600,color:'var(--base-100)',lineHeight:1.4}}>{incident.title}</div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--base-500)',cursor:'pointer',fontSize:16,padding:4,borderRadius:4,flexShrink:0}}>✕</button>
+        </div>
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'14px'}}>
+        {/* Description */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:6}}>Summary</div>
+          <p style={{fontSize:12,color:'var(--base-400)',lineHeight:1.7}}>{incident.description}</p>
+        </div>
+
+        {/* Meta row */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
+          {[
+            ['Service',incident.service],['Layer',incident.layer],
+            ['Steps',incident.steps],['Risk Score',incident.risk],
+          ].map(([l,v])=>(
+            <div key={l} style={{padding:'8px 10px',borderRadius:8,background:'rgba(255,255,255,0.02)',border:'1px solid var(--base-800)'}}>
+              <div style={{fontSize:9,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3}}>{l}</div>
+              <div style={{fontSize:13,fontWeight:600,color:'var(--base-200)',fontFamily:'JetBrains Mono'}}>{v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Attack path */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>Attack Path</div>
+          <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+            {incident.path.map((s,i)=>(
+              <React.Fragment key={s}>
+                <div style={{padding:'5px 10px',borderRadius:7,background:'var(--base-900)',border:'1px solid var(--base-700)',fontSize:11,fontFamily:'JetBrains Mono',color:'var(--base-300)'}}>{s}</div>
+                {i<incident.path.length-1&&<span style={{color:'var(--base-600)',fontSize:14}}>→</span>}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* Kill chain steps */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>Kill Chain</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {KILL_CHAIN_STEPS.slice(0,incident.steps).map((step,i)=>(
+              <div key={i} style={{
+                display:'flex',alignItems:'flex-start',gap:10,padding:'8px 10px',
+                borderRadius:8,border:'1px solid var(--base-800)',background:'rgba(255,255,255,0.01)',
+              }}>
+                <div style={{
+                  width:20,height:20,borderRadius:'50%',flexShrink:0,
+                  background:i===0?'rgba(250,250,250,0.06)':i===incident.steps-1?'var(--sev-critical-bg)':'var(--base-800)',
+                  border:`1px solid ${i===incident.steps-1?'var(--sev-critical-border)':'var(--base-700)'}`,
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  fontSize:9,fontWeight:700,color:'var(--base-400)',fontFamily:'JetBrains Mono',
+                }}>{i+1}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:600,color:'var(--base-200)',marginBottom:2}}>{step.step}</div>
+                  <div style={{fontSize:10,color:'var(--base-500)',fontFamily:'JetBrains Mono'}}>{step.service} · {step.event}</div>
+                  <div style={{display:'flex',gap:5,marginTop:4}}>
+                    <span style={{fontSize:9,fontFamily:'JetBrains Mono',padding:'1px 5px',borderRadius:3,background:'rgba(250,250,250,0.04)',border:'1px solid rgba(250,250,250,0.08)',color:'var(--base-400)'}}>{step.mitre}</span>
+                    <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:layerBg(step.layer),color:layerColor(step.layer),border:`1px solid ${layerColor(step.layer)}30`}}>{step.layer}</span>
+                  </div>
+                </div>
+                <span style={{fontSize:9,color:'var(--base-600)',fontFamily:'JetBrains Mono',flexShrink:0}}>{relTime(step.ts)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* MITRE */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>MITRE ATT&CK</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+            {incident.mitre.map(t=>(
+              <span key={t} style={{fontSize:10,fontFamily:'JetBrains Mono',padding:'3px 8px',borderRadius:5,background:'rgba(250,250,250,0.04)',border:'1px solid rgba(250,250,250,0.1)',color:'var(--base-300)'}}>{t}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:2}}>Actions</div>
+          <button style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.08)',color:'var(--sev-critical)',fontSize:12,fontWeight:500,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>⊘ Block Source IP</button>
+          <button style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--base-700)',background:'transparent',color:'var(--base-300)',fontSize:12,fontWeight:500,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>◷ Assign to Analyst</button>
+          <button style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--base-700)',background:'transparent',color:'var(--base-300)',fontSize:12,fontWeight:500,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>✓ Mark Resolved</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Activity Timeline ────────────────────────────────────────────── */
+function ActivityTimeline({events: evts, selectedEvent, onSelectEvent}){
+  return (
+    <Card style={{display:'flex',flexDirection:'column'}}>
+      <CardHeader>
+        <CardTitle>Activity Timeline</CardTitle>
+        <span style={{fontSize:10,color:'var(--base-500)'}}>{evts.length} events</span>
+      </CardHeader>
+
+      {/* Mini bar chart */}
+      <div style={{padding:'10px 12px 6px',borderBottom:'1px solid var(--base-800)'}}>
+        <div style={{display:'flex',alignItems:'flex-end',gap:2,height:36}}>
+          {TIMELINE_EVENTS.map((t,i)=>{
+            const maxC = Math.max(...TIMELINE_EVENTS.map(x=>x.count));
+            const h = Math.max(4, (t.count/maxC)*36);
+            const isHot = t.critical>3;
+            return (
+              <div key={i} title={`${t.label}: ${t.count} events (${t.critical} critical)`}
+                style={{
+                  flex:1,height:`${h}px`,borderRadius:'2px 2px 0 0',cursor:'pointer',
+                  background:isHot?'rgba(239,68,68,0.55)':'rgba(163,163,163,0.25)',
+                  transition:'all 150ms ease',
+                }}
+                onMouseEnter={e=>e.currentTarget.style.opacity='0.8'}
+                onMouseLeave={e=>e.currentTarget.style.opacity='1'}
+              />
+            );
+          })}
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:3}}>
+          <span style={{fontSize:9,color:'var(--base-700)',fontFamily:'JetBrains Mono'}}>{TIMELINE_EVENTS[0].label}</span>
+          <span style={{fontSize:9,color:'var(--base-700)',fontFamily:'JetBrains Mono'}}>{TIMELINE_EVENTS[TIMELINE_EVENTS.length-1].label}</span>
+        </div>
+      </div>
+
+      {/* Event list */}
+      <div style={{flex:1,overflowY:'auto',maxHeight:240,padding:'4px'}}>
+        {evts.slice(0,12).map((ev,i)=>{
+          const isSel = ev.id===selectedEvent;
+          return (
+            <button key={ev.id} onClick={()=>onSelectEvent(ev.id)}
+              className={i===0?'flash-row':''}
+              style={{
+                display:'flex',alignItems:'center',gap:8,width:'100%',
+                padding:'7px 10px',borderRadius:7,border:'1px solid',textAlign:'left',
+                cursor:'pointer',marginBottom:2,transition:'all 150ms ease',
+                background:isSel?'rgba(250,250,250,0.04)':'transparent',
+                borderColor:isSel?'rgba(250,250,250,0.08)':'transparent',
+              }}
+              onMouseEnter={e=>{if(!isSel){e.currentTarget.style.background='rgba(255,255,255,0.02)';e.currentTarget.style.borderColor='var(--base-800)';}}}
+              onMouseLeave={e=>{if(!isSel){e.currentTarget.style.background='transparent';e.currentTarget.style.borderColor='transparent';}}}>
+              <SevDot severity={ev.severity}/>
+              <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
+                <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:layerBg(ev.layer),color:layerColor(ev.layer),border:`1px solid ${layerColor(ev.layer)}25`,fontWeight:600}}>{ev.layer}</span>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <span style={{fontSize:11,color:'var(--base-300)',fontFamily:'JetBrains Mono'}}>{ev.service}</span>
+                <span style={{fontSize:11,color:'var(--base-600)',marginLeft:6}}>{ev.detail}</span>
+              </div>
+              <span style={{fontSize:9,color:'var(--base-600)',fontFamily:'JetBrains Mono',flexShrink:0}}>{relTime(ev.ts)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Services Overview ────────────────────────────────────────────── */
+function ServicesPanel({services}){
+  const statusColors = {alert:'var(--sev-critical)',warning:'var(--sev-medium)',healthy:'#34d399'};
+  const statusBgs = {alert:'rgba(239,68,68,0.06)',warning:'rgba(234,179,8,0.06)',healthy:'rgba(52,211,153,0.06)'};
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Services</CardTitle>
+        <div style={{display:'flex',gap:8}}>
+          <span style={{fontSize:10,color:'var(--sev-critical)'}}>{services.filter(s=>s.status==='alert').length} alerts</span>
+          <span style={{fontSize:10,color:'#34d399'}}>{services.filter(s=>s.status==='healthy').length} healthy</span>
+        </div>
+      </CardHeader>
+      <div style={{padding:'6px'}}>
+        {services.map((svc,i)=>{
+          const clr = statusColors[svc.status];
+          const bg = statusBgs[svc.status];
+          return (
+            <div key={svc.name} style={{
+              display:'flex',alignItems:'center',gap:10,
+              padding:'8px 10px',borderRadius:7,marginBottom:3,
+              background:svc.status!=='healthy'?bg:'transparent',
+              border:`1px solid ${svc.status!=='healthy'?`${clr}20`:'transparent'}`,
+              transition:'all 150ms ease',cursor:'default',
+            }}
+            onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.02)';}}
+            onMouseLeave={e=>{e.currentTarget.style.background=svc.status!=='healthy'?bg:'transparent';}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:clr,flexShrink:0,boxShadow:svc.status==='alert'?`0 0 6px ${clr}`:'none'}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:600,color:'var(--base-200)',fontFamily:'JetBrains Mono'}}>{svc.name}</div>
+                <div style={{fontSize:9,color:'var(--base-600)'}}>:{svc.port} · {svc.events} events</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:layerBg(svc.layer),color:layerColor(svc.layer),border:`1px solid ${layerColor(svc.layer)}25`}}>{svc.layer}</span>
+                {svc.risk>0&&<span style={{fontSize:10,fontWeight:700,color:clr,fontFamily:'JetBrains Mono'}}>{svc.risk}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Attack Flow / Kill Chain ─────────────────────────────────────── */
+function AttackFlowPanel({incident}){
+  const steps = incident ? KILL_CHAIN_STEPS.slice(0, incident.steps) : KILL_CHAIN_STEPS;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Attack Flow</CardTitle>
+        {incident&&<Badge severity={incident.severity}>Kill Chain · {steps.length} steps</Badge>}
+      </CardHeader>
+      <div style={{padding:'12px 14px',overflowX:'auto'}}>
+        <div style={{display:'flex',alignItems:'stretch',gap:4,minWidth:'fit-content'}}>
+          {steps.map((step,i)=>{
+            const isFirst = i===0;
+            const isLast = i===steps.length-1;
+            const clr = sevColor(step.severity);
+            return (
+              <React.Fragment key={i}>
+                <div style={{
+                  minWidth:150,padding:'10px 12px',borderRadius:9,
+                  border:`1px solid ${isLast?sevBorder('critical'):isFirst?'rgba(250,250,250,0.12)':'var(--base-800)'}`,
+                  background:isLast?'rgba(239,68,68,0.05)':isFirst?'rgba(250,250,250,0.03)':'var(--base-900)',
+                  display:'flex',flexDirection:'column',gap:6,
+                  position:'relative',
+                }}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <span style={{fontSize:9,fontWeight:700,color:'var(--base-600)',textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:'JetBrains Mono'}}>
+                      {isFirst?'Entry':isLast?'Impact':`Step ${i+1}`}
+                    </span>
+                    <SevDot severity={step.severity}/>
+                  </div>
+                  <div style={{fontSize:11,fontWeight:600,color:'var(--base-100)',fontFamily:'JetBrains Mono'}}>{step.service}</div>
+                  <div style={{fontSize:10,color:'var(--base-500)'}}>{step.event}</div>
+                  <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                    <span style={{fontSize:9,fontFamily:'JetBrains Mono',padding:'1px 5px',borderRadius:3,background:'rgba(250,250,250,0.04)',border:'1px solid rgba(250,250,250,0.08)',color:'var(--base-400)'}}>{step.mitre}</span>
+                    <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:layerBg(step.layer),color:layerColor(step.layer),border:`1px solid ${layerColor(step.layer)}25`}}>{step.layer}</span>
+                  </div>
+                  <div style={{fontSize:9,color:'var(--base-700)',fontFamily:'JetBrains Mono'}}>{relTime(step.ts)}</div>
+                </div>
+                {i<steps.length-1&&(
+                  <div style={{display:'flex',alignItems:'center',padding:'0 2px'}}>
+                    <svg width="20" height="12" viewBox="0 0 20 12" fill="none">
+                      <path d="M0 6 H14 M14 6 L8 1 M14 6 L8 11" stroke="var(--base-600)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Live Feed ────────────────────────────────────────────────────── */
+function LiveFeedPanel({events: evts, filter}){
+  const filtered = evts.filter(ev=>{
+    if(filter.severity&&ev.severity!==filter.severity) return false;
+    if(filter.service&&ev.service!==filter.service) return false;
+    return true;
+  });
+
+  return (
+    <Card style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <CardHeader>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <CardTitle>Live Event Feed</CardTitle>
+          <LiveDot/>
+        </div>
+        <span style={{fontSize:10,color:'var(--base-500)',fontFamily:'JetBrains Mono'}}>{filtered.length} events</span>
+      </CardHeader>
+      <div style={{flex:1,overflowY:'auto',padding:'4px',maxHeight:380}}>
+        {filtered.map((ev,i)=>(
+          <div key={ev.id} className={i===0?'flash-row':''} style={{
+            display:'flex',alignItems:'flex-start',gap:8,
+            padding:'7px 10px',borderRadius:7,marginBottom:2,
+            transition:'background 150ms ease',cursor:'default',
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.025)'}
+          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+            <div style={{paddingTop:2,flexShrink:0}}><SevDot severity={ev.severity}/></div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:2}}>
+                <span style={{fontSize:10,fontWeight:600,color:'var(--base-300)',fontFamily:'JetBrains Mono'}}>{ev.service}</span>
+                <span style={{fontSize:9,padding:'0px 4px',borderRadius:3,background:layerBg(ev.layer),color:layerColor(ev.layer),border:`1px solid ${layerColor(ev.layer)}25`}}>{ev.layer}</span>
+              </div>
+              <div style={{fontSize:10,color:'var(--base-500)',lineHeight:1.4,textWrap:'pretty'}}>{ev.detail}</div>
+            </div>
+            <div style={{flexShrink:0,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}}>
+              <Badge severity={ev.severity}>{ev.severity}</Badge>
+              <span style={{fontSize:9,color:'var(--base-700)',fontFamily:'JetBrains Mono'}}>{relTime(ev.ts)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── App Shell ────────────────────────────────────────────────────── */
+function App(){
+  const { TweaksPanel, useTweaks } = window;
+  const [tweaks, setTweak] = useTweaks(/*EDITMODE-BEGIN*/{
+    "accentColor": "#ef4444",
+    "compactMode": false,
+    "showKillChain": true,
+    "showLiveFeed": true,
+    "alertsPosition": "left"
+  }/*EDITMODE-END*/);
+
+  const [activeNav, setActiveNav] = useState('dashboard');
+  const [selectedIncidentId, setSelectedIncidentId] = useState('inc-001');
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [filters, setFilters] = useState({severity:'',service:'',status:''});
+
+  const selectedIncident = MOCK_INCIDENTS.find(i=>i.id===selectedIncidentId)||null;
+  const criticalCount = MOCK_INCIDENTS.filter(i=>i.severity==='critical'&&i.status==='open').length;
+  const highCount = MOCK_INCIDENTS.filter(i=>i.severity==='high'&&i.status!=='resolved').length;
+
+  const handleSelectIncident = useCallback((id)=>{
+    setSelectedIncidentId(prev=>prev===id?null:id);
+  },[]);
+
+  return (
+    <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+      <Sidebar active={activeNav} onNav={setActiveNav}/>
+      <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+        <TopBar criticalCount={criticalCount} highCount={highCount} systemStatus="NOMINAL"/>
+        <main style={{flex:1,overflowY:'auto',padding:tweaks.compactMode?12:16,background:'var(--base-950)'}}>
+          <div className="fade-in" style={{display:'flex',flexDirection:'column',gap:tweaks.compactMode?10:14,maxWidth:1600,margin:'0 auto'}}>
+
+            {/* KPI Bar */}
+            <KPIBar events={MOCK_EVENTS} incidents={MOCK_INCIDENTS}/>
+
+            {/* What Happened */}
+            <WhatHappenedCard incidents={MOCK_INCIDENTS}/>
+
+            {/* Main layout: alerts + detail OR feed */}
+            <div style={{display:'grid',gridTemplateColumns:selectedIncident?'1fr 320px':'1fr',gap:14,alignItems:'start'}}>
+              <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                {/* Alerts + detail side by side */}
+                <div style={{display:'grid',gridTemplateColumns:selectedIncident?'1fr 340px':'1fr',gap:14,alignItems:'start'}}>
+                  <div style={{minHeight:400}}>
+                    <AlertsPanel
+                      incidents={MOCK_INCIDENTS}
+                      selectedId={selectedIncidentId}
+                      onSelect={handleSelectIncident}
+                      filters={filters}
+                      onFilterChange={setFilters}
+                    />
+                  </div>
+                  {selectedIncident&&(
+                    <div style={{height:'fit-content',minHeight:400}}>
+                      <DetailDrawer incident={selectedIncident} onClose={()=>setSelectedIncidentId(null)}/>
+                    </div>
+                  )}
+                </div>
+
+                {/* Attack Flow */}
+                {tweaks.showKillChain&&<AttackFlowPanel incident={selectedIncident}/>}
+
+                {/* Timeline + Services row */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:14,alignItems:'start'}}>
+                  <ActivityTimeline events={MOCK_EVENTS} selectedEvent={selectedEventId} onSelectEvent={setSelectedEventId}/>
+                  <ServicesPanel services={MOCK_SERVICES}/>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Feed (full width) */}
+            {tweaks.showLiveFeed&&(
+              <LiveFeedPanel events={MOCK_EVENTS} filter={filters}/>
+            )}
+          </div>
+        </main>
+      </div>
+
+      {/* Tweaks Panel */}
+      <TweaksPanel>
+        <div style={{padding:'0 0 8px'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'var(--base-500)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>Layout</div>
+          <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,fontSize:12,color:'var(--base-300)'}}>
+            Compact Mode
+            <input type="checkbox" checked={tweaks.compactMode} onChange={e=>setTweak('compactMode',e.target.checked)} style={{accentColor:'var(--base-400)'}}/>
+          </label>
+          <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,fontSize:12,color:'var(--base-300)'}}>
+            Show Kill Chain
+            <input type="checkbox" checked={tweaks.showKillChain} onChange={e=>setTweak('showKillChain',e.target.checked)} style={{accentColor:'var(--base-400)'}}/>
+          </label>
+          <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,fontSize:12,color:'var(--base-300)'}}>
+            Show Live Feed
+            <input type="checkbox" checked={tweaks.showLiveFeed} onChange={e=>setTweak('showLiveFeed',e.target.checked)} style={{accentColor:'var(--base-400)'}}/>
+          </label>
+
+          <div style={{fontSize:10,fontWeight:700,color:'var(--base-500)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>Accent Color</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {['#ef4444','#f97316','#22d3ee','#a855f7','#34d399'].map(c=>(
+              <button key={c} onClick={()=>setTweak('accentColor',c)} style={{
+                width:24,height:24,borderRadius:'50%',background:c,border:`2px solid ${tweaks.accentColor===c?'white':'transparent'}`,
+                cursor:'pointer',boxShadow:tweaks.accentColor===c?`0 0 8px ${c}`:'none',
+              }}/>
+            ))}
+          </div>
+        </div>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>

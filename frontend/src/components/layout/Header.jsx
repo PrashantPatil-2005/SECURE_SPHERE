@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Bell, Sun, Moon, RefreshCw, Trash2, Loader2, Terminal } from 'lucide-react';
@@ -6,8 +7,25 @@ import { api } from '@/lib/api';
 import { useOpenCommandPalette } from '@/contexts/CommandPaletteBridge';
 import ProfileMenu from '@/components/layout/ProfileMenu';
 
+const PATH_LABELS = {
+  '/dashboard': ['Operations Overview', 'Triage Mode'],
+  '/events':    ['Live Events', 'Stream'],
+  '/incidents': ['Incidents', 'Investigation'],
+  '/topology':  ['Topology', 'Service Graph'],
+  '/risk':      ['Risk Scores', 'Per-service'],
+  '/mitre':     ['MITRE ATT&CK', 'Coverage'],
+  '/replay':    ['Replay', 'Scenario'],
+  '/audit':     ['Audit', 'Logs'],
+  '/system':    ['System', 'Health'],
+  '/settings':  ['Settings', 'Preferences'],
+  '/intro':     ['Intro', 'Tour'],
+};
+
 export default function Header({
   incidentCount = 0,
+  criticalCount,
+  highCount,
+  systemStatus = 'NOMINAL',
   unreadCount = 0,
   theme,
   onToggleTheme,
@@ -18,6 +36,8 @@ export default function Header({
   onLogout,
   onOpenNotifications,
 }) {
+  const location = useLocation();
+  const [primary, secondary] = PATH_LABELS[location.pathname] || ['SecuriSphere', ''];
   const { openPalette } = useOpenCommandPalette();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -49,26 +69,82 @@ export default function Header({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 flex h-12 items-center justify-between gap-3 border-b border-dashed border-base-800 bg-base-900/75 px-4 backdrop-blur-xl transition-colors duration-200">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+    <header className="sticky top-0 z-40 flex h-[52px] items-center justify-between gap-3 border-b border-base-800 bg-base-950/95 px-5 backdrop-blur-xl transition-colors duration-200">
+      {/* Left: breadcrumb */}
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <span className="truncate text-[12px] font-semibold text-base-200">{primary}</span>
+        {secondary && (
+          <>
+            <span className="text-base-700">·</span>
+            <span className="text-[11px] text-base-500">{secondary}</span>
+          </>
+        )}
+      </div>
+
+      {/* Center: severity pills */}
+      <div className="hidden items-center gap-1.5 md:flex">
+        {typeof criticalCount === 'number' && (
+          <div
+            className="flex items-center gap-1.5 rounded-full border px-2.5 py-1"
+            style={{ background: 'var(--sev-critical-bg)', borderColor: 'var(--sev-critical-border)' }}
+          >
+            <span
+              className="dot-pulse inline-block h-1.5 w-1.5 rounded-full"
+              style={{ background: 'var(--sev-critical)', '--dot-color': 'rgba(239,68,68,0.6)' }}
+            />
+            <span className="font-mono text-[11px] font-bold" style={{ color: 'var(--sev-critical)' }}>
+              {criticalCount}
+            </span>
+            <span className="text-[10px] uppercase opacity-80" style={{ color: 'var(--sev-critical)' }}>
+              Critical
+            </span>
+          </div>
+        )}
+        {typeof highCount === 'number' && (
+          <div
+            className="flex items-center gap-1.5 rounded-full border px-2.5 py-1"
+            style={{ background: 'var(--sev-high-bg)', borderColor: 'var(--sev-high-border)' }}
+          >
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{ background: 'var(--sev-high)' }}
+            />
+            <span className="font-mono text-[11px] font-bold" style={{ color: 'var(--sev-high)' }}>
+              {highCount}
+            </span>
+            <span className="text-[10px] uppercase opacity-80" style={{ color: 'var(--sev-high)' }}>
+              High
+            </span>
+          </div>
+        )}
+        <div
+          className="flex items-center gap-1.5 rounded-full border px-3 py-1"
+          style={{ background: 'rgba(52,211,153,0.08)', borderColor: 'rgba(52,211,153,0.22)' }}
+        >
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: '#34d399', boxShadow: '0 0 6px #34d399' }}
+          />
+          <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#34d399' }}>
+            System {systemStatus}
+          </span>
+        </div>
+      </div>
+
+      {/* Right: command palette + search + actions */}
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
         <Button
           variant="secondary"
           size="sm"
-          className="h-8 shrink-0 gap-1.5 border-dashed border-base-800 px-2 font-mono text-[10px] text-base-400"
+          className="h-8 shrink-0 gap-1.5 border-base-800 px-2 font-mono text-[10px] text-base-400"
           onClick={openPalette}
           title="Command palette (⌘K)"
         >
           <Terminal className="h-3.5 w-3.5 text-accent/80" />
-          <span className="hidden sm:inline">Commands</span>
-          <kbd className="ml-1.5 hidden items-center gap-0.5 rounded-md border border-base-700 bg-base-800/50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-base-200 shadow-sm transition-colors group-hover:border-accent/40 md:inline-flex">
-            <span className="text-[11px] opacity-70">
-              {typeof navigator !== 'undefined' && navigator.platform?.includes('Mac') ? '⌘' : 'Ctrl'}
-            </span>
-            <span>K</span>
-          </kbd>
+          <span className="hidden sm:inline">⌘K</span>
         </Button>
 
-        <div className="relative hidden min-w-0 max-w-md flex-1 items-center sm:flex" role="search">
+        <div className="relative hidden min-w-0 max-w-[240px] flex-1 items-center lg:flex" role="search">
           <input
             type="search"
             placeholder="Global search…"
@@ -111,9 +187,8 @@ export default function Header({
             </div>
           )}
         </div>
-      </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
         <Button
           variant="icon"
           size="icon"
@@ -163,9 +238,17 @@ export default function Header({
 
         <div className="mx-1 hidden h-5 w-px bg-base-800 sm:block" />
 
-        <span className="hidden font-mono text-[10px] tabular-nums text-base-500 sm:inline w-14 text-right">
-          {clock.toLocaleTimeString()}
+        <span className="hidden font-mono text-[11px] tabular-nums text-base-400 sm:inline tracking-wide">
+          {clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </span>
+
+        <div className="hidden items-center gap-1 sm:flex">
+          <span
+            className="dot-pulse inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: 'var(--sev-critical)', boxShadow: '0 0 6px var(--sev-critical)', '--dot-color': 'rgba(239,68,68,0.6)' }}
+          />
+          <span className="text-[10px] tracking-wide text-base-500">LIVE</span>
+        </div>
 
         <ProfileMenu
           initial="A"
@@ -173,6 +256,7 @@ export default function Header({
           onNavigate={(p) => (onNavigate ? onNavigate(p) : onProfileClick?.())}
           onLogout={onLogout}
         />
+        </div>
       </div>
     </header>
   );

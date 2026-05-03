@@ -114,7 +114,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenario, speed }),
     }).then(async (r) => {
-      const body = await r.json().catch(() => ({}));
+      // Some failure paths (flask-limiter 429, gateway 502/504) return
+      // text/html instead of JSON. Read once as text, try parse, fall back
+      // so the UI gets a usable message either way.
+      const raw = await r.text().catch(() => '');
+      let body = {};
+      try { body = raw ? JSON.parse(raw) : {}; } catch { body = { message: raw.slice(0, 200) }; }
       return { ...body, http_status: r.status, ok: r.ok };
     }),
 

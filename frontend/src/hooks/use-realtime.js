@@ -62,8 +62,6 @@ export function useRealtime() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [usingMock, setUsingMock] = useState(false);
-
   const pollRef = useRef(null);            // legacy catch-all fallback
   const incidentPollRef = useRef(null);    // WS-disconnect fallback for incidents
   const touch = () => setLastUpdate(new Date().toISOString());
@@ -102,12 +100,9 @@ export function useRealtime() {
       }
       if (timeRes.status === 'fulfilled') setTimeline(timeRes.value?.timeline || timeRes.value || []);
       if (sysRes.status === 'fulfilled') setSystemStatus(sysRes.value || {});
-      setUsingMock(false);
       touch();
     } catch {
-      // Backend offline — keep state empty. No mock traffic; only the
-      // user-triggered attack simulator should ever populate the dashboard.
-      setUsingMock(false);
+      // Backend offline — keep state empty.
     } finally {
       setLoading(false);
     }
@@ -207,7 +202,7 @@ export function useRealtime() {
   return {
     events, incidents, riskScores, metrics, timeline,
     topology, systemStatus, connected, loading, lastUpdate,
-    usingMock, refetch: fetchAll,
+    refetch: fetchAll,
     setEvents, setIncidents,
   };
 }

@@ -32,6 +32,32 @@ export default {
           low: 'var(--base-600)',
           info: 'var(--base-500)',
         },
+        // Saturated severity — primary-signal usage (chips, dots, headlines).
+        // Each tier exposes the line color, a translucent surface bg, and a
+        // matching border so cards & badges can compose without per-component switches.
+        sev: {
+          critical: 'var(--sev-critical)',
+          'critical-bg': 'var(--sev-critical-bg)',
+          'critical-border': 'var(--sev-critical-border)',
+          high: 'var(--sev-high)',
+          'high-bg': 'var(--sev-high-bg)',
+          'high-border': 'var(--sev-high-border)',
+          medium: 'var(--sev-medium)',
+          'medium-bg': 'var(--sev-medium-bg)',
+          'medium-border': 'var(--sev-medium-border)',
+          low: 'var(--sev-low)',
+          'low-bg': 'var(--sev-low-bg)',
+          'low-border': 'var(--sev-low-border)',
+          info: 'var(--sev-info)',
+          'info-bg': 'var(--sev-info-bg)',
+          'info-border': 'var(--sev-info-border)',
+        },
+        layer: {
+          network: 'var(--layer-network)',
+          api: 'var(--layer-api)',
+          auth: 'var(--layer-auth)',
+          browser: 'var(--layer-browser)',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

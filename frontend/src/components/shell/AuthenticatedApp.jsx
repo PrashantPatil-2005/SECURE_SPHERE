@@ -26,7 +26,7 @@ import { useCommandPalette } from '@/hooks/useCommandPalette';
 import { useToast } from '@/components/ui/Toaster';
 import { Skeleton } from '@/components/ui/Spinner';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, getSeverityString } from '@/lib/utils';
 import { readPersistedTheme } from '@/lib/themeDom';
 import Dashboard from '@/pages/Dashboard';
 import Events from '@/pages/Events';
@@ -84,12 +84,24 @@ export default function AuthenticatedApp({ onLogout }) {
   const {
     events, incidents, riskScores, metrics, timeline,
     topology, systemStatus, connected, loading, lastUpdate,
-    usingMock, refetch, setEvents, setIncidents,
+    refetch, setEvents, setIncidents,
   } = useRealtime();
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [seenCount, setSeenCount] = useState(0);
   const unreadCount = Math.max(0, incidents.length - seenCount);
+
+  const { criticalCount, highCount } = useMemo(() => {
+    let c = 0;
+    let h = 0;
+    for (const inc of incidents) {
+      const sev = getSeverityString(inc?.severity);
+      const status = String(inc?.status || '').toLowerCase();
+      if (sev === 'critical' && status !== 'resolved') c += 1;
+      else if (sev === 'high' && status !== 'resolved') h += 1;
+    }
+    return { criticalCount: c, highCount: h };
+  }, [incidents]);
 
   useEffect(() => {
     if (notifOpen) setSeenCount(incidents.length);
@@ -283,6 +295,9 @@ export default function AuthenticatedApp({ onLogout }) {
           toolbar={
             <Header
               incidentCount={incidents.length}
+              criticalCount={criticalCount}
+              highCount={highCount}
+              systemStatus={connected ? 'NOMINAL' : 'OFFLINE'}
               unreadCount={unreadCount}
               theme={theme}
               onToggleTheme={toggleTheme}
@@ -300,7 +315,6 @@ export default function AuthenticatedApp({ onLogout }) {
               lastUpdate={lastUpdate}
               eventCount={events.length}
               incidentCount={incidents.length}
-              usingMock={usingMock}
             />
           }
         >

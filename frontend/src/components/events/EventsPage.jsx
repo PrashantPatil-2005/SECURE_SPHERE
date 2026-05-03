@@ -289,7 +289,7 @@ export default function EventsPage({ events = [] }) {
         canonicalQuery={canonical}
       />
 
-      <div className="rounded-lg border border-base-800 bg-base-900 p-3">
+      <div className="rounded-[10px] border border-base-800 bg-base-900 p-3">
         <EventFilters
           layer={layer}
           severity={severity}
@@ -324,7 +324,7 @@ export default function EventsPage({ events = [] }) {
         />
       )}
 
-      <div className="overflow-hidden rounded-lg border border-base-800 bg-base-900">
+      <div className="overflow-hidden rounded-[10px] border border-base-800 bg-base-900">
         <div className="border-b border-base-800 px-4 py-2 font-mono text-[10px] text-base-500">
           {mode === 'table' ? 'Dense table' : 'Filtered list (timeline window applies when set)'}
         </div>

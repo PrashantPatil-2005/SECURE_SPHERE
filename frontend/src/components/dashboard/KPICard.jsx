@@ -14,21 +14,26 @@ export default function KPICard({ label, value, sub, icon: Icon, emphasize, clas
   return (
     <div
       className={cn(
-        'rounded-lg border border-base-800 bg-base-900 p-4 transition-colors',
-        emphasize && 'border-red-500/30 ring-1 ring-red-500/15',
+        'rounded-[10px] border bg-base-900 px-3.5 py-3 transition-colors',
+        emphasize
+          ? 'border-sev-critical-border shadow-[inset_0_0_0_1px_rgba(239,68,68,0.08)]'
+          : 'border-base-800',
         className
       )}
     >
-      <div className="mb-2 flex items-center gap-2">
-        {Icon && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-base-800 bg-base-950">
-            <Icon className="h-4 w-4 text-base-400" />
-          </div>
-        )}
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-base-500">{label}</span>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-base-600">{label}</span>
+        {Icon && <Icon className={cn('h-3.5 w-3.5', emphasize ? 'text-sev-critical' : 'text-base-600')} />}
       </div>
-      <div className="text-2xl font-semibold tracking-tight text-base-100">{value}</div>
-      {sub && <div className="mt-1 text-xs text-base-500">{sub}</div>}
+      <div
+        className={cn(
+          'font-mono text-[24px] font-bold leading-none tracking-tight',
+          emphasize ? 'text-sev-critical' : 'text-base-100'
+        )}
+      >
+        {value}
+      </div>
+      {sub && <div className="mt-1.5 text-[10px] text-base-500">{sub}</div>}
     </div>
   );
 }

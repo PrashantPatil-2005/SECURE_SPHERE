@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Clock, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, Clock, Filter, Zap } from 'lucide-react';
 import { getSeverityString } from '@/lib/utils';
 
 /**
@@ -19,39 +19,63 @@ export function buildKpiItems({ events, incidents, metrics }) {
         )
       : 0;
 
+  const openIncidents = incidents.filter((i) => String(i?.status || '').toLowerCase() === 'open');
+  const resolvedIncidents = incidents.filter(
+    (i) => String(i?.status || '').toLowerCase() === 'resolved'
+  );
+  const criticalIncidents = incidents.filter(
+    (i) => getSeverityString(i?.severity) === 'critical'
+  ).length;
+
+  let reductionPct = '—';
+  const corrRatio = metrics?.correlation?.compression_ratio;
+  if (typeof corrRatio === 'number' && corrRatio > 0) {
+    reductionPct = `${Math.min(99.9, (1 - 1 / corrRatio) * 100).toFixed(1)}%`;
+  } else if (totalEvents > 0 && incidents.length > 0) {
+    reductionPct = `${Math.max(0, (1 - incidents.length / totalEvents) * 100).toFixed(1)}%`;
+  }
+
   return [
     {
+      id: 'incidents',
+      label: 'Active Incidents',
+      value: openIncidents.length || incidents.length,
+      icon: AlertTriangle,
+      emphasize: criticalIncidents > 0,
+      sub: `${criticalIncidents} critical`,
+    },
+    {
       id: 'events',
-      label: 'Total events',
+      label: 'Events (window)',
       value: totalEvents.toLocaleString(),
       icon: Activity,
-      sub: events.length > 0 ? `+${events.length} in window` : 'Awaiting data',
-    },
-    {
-      id: 'incidents',
-      label: 'Active incidents',
-      value: incidents.length,
-      icon: AlertTriangle,
-      emphasize: incidents.length > 0,
-      sub: `${incidents.filter((i) => getSeverityString(i?.severity) === 'critical').length} critical, ${incidents.filter((i) => getSeverityString(i?.severity) === 'high').length} high`,
-    },
-    {
-      id: 'critical',
-      label: 'Critical alerts',
-      value: criticalAlerts,
-      icon: Zap,
-      emphasize: criticalAlerts > 0,
-      sub: `${events.filter((e) => getSeverityString(e?.severity) === 'high').length} high, ${events.filter((e) => getSeverityString(e?.severity) === 'medium').length} medium`,
+      sub: events.length > 0 ? 'live feed' : 'awaiting data',
     },
     {
       id: 'mttd',
       label: 'Avg MTTD',
       value: avgMttd > 0 ? `${avgMttd}s` : '—',
       icon: Clock,
-      sub: 'Mean time to detect',
+      sub: avgMttd > 0 ? 'mean time to detect' : 'awaiting data',
+    },
+    {
+      id: 'reduction',
+      label: 'Alert Reduction',
+      value: reductionPct,
+      icon: Filter,
+      sub: 'vs raw logs',
+    },
+    {
+      id: 'critical',
+      label: 'Critical Alerts',
+      value: criticalAlerts,
+      icon: Zap,
+      emphasize: criticalAlerts > 0,
+      sub: `${events.filter((e) => getSeverityString(e?.severity) === 'high').length} high · ${resolvedIncidents.length} resolved`,
     },
   ];
 }
+
 
 /**
  * @param {unknown[]} incidents

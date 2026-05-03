@@ -7,7 +7,7 @@ export default function SectionCard({ title, description, children, className })
   return (
     <section
       className={cn(
-        'rounded-lg border border-base-800 bg-base-900/80 p-4 shadow-none',
+        'rounded-[10px] border border-base-800 bg-base-900/80 p-4 shadow-none',
         className
       )}
     >

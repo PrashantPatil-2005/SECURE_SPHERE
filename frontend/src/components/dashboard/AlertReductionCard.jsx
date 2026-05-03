@@ -56,7 +56,7 @@ export default function AlertReductionCard({ metrics = {}, className = '' }) {
 
   return (
     <div className={cn(
-      'rounded-lg border border-base-800 bg-base-900 p-4 flex flex-col gap-3',
+      'rounded-[10px] border border-base-800 bg-base-900 p-4 flex flex-col gap-3',
       className,
     )}>
       <div className="flex items-center justify-between">

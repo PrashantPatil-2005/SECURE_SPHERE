@@ -1,10 +1,13 @@
+import { useMemo } from 'react';
 import EventsAreaChart from '@/components/charts/EventsAreaChart';
+import { getSeverityString } from '@/lib/utils';
 import AlertReductionCard from './AlertReductionCard';
 import ChartCard from './ChartCard';
 import IncidentList from './IncidentList';
 import KPIBar from './KPIBar';
 import LiveFeed from './LiveFeed';
 import ServiceTopologyCard from './ServiceTopologyCard';
+import WhatHappenedCard from './WhatHappenedCard';
 
 /** Variant A — incident-first triage lane. */
 export default function TriageDashboard({
@@ -18,10 +21,21 @@ export default function TriageDashboard({
   selectedId,
   onSelectIncident,
 }) {
+  const featured = useMemo(() => {
+    if (!incidents?.length) return null;
+    if (selectedId) {
+      const sel = incidents.find((i) => String(i?.incident_id ?? i?.id) === String(selectedId));
+      if (sel) return sel;
+    }
+    return (
+      incidents.find((i) => getSeverityString(i?.severity) === 'critical') || incidents[0] || null
+    );
+  }, [incidents, selectedId]);
+
   return (
     <div className="space-y-4">
       <KPIBar items={kpiItems} />
-      <AlertReductionCard metrics={metrics} />
+      {featured && <WhatHappenedCard incident={featured} />}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-7">
@@ -45,8 +59,9 @@ export default function TriageDashboard({
             )}
           </ChartCard>
         </div>
-        <div className="xl:col-span-5">
+        <div className="space-y-4 xl:col-span-5">
           <LiveFeed events={events} />
+          <AlertReductionCard metrics={metrics} />
         </div>
       </div>
     </div>

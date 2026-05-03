@@ -97,12 +97,14 @@ export default function DashboardPage({
   }, [navigate]);
 
   return (
-    <div className="space-y-4 text-base-200">
+    <div className="space-y-4 px-1 text-base-200">
       <DemoBanner />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-base-100">Operations overview</h1>
-          <p className="text-xs text-base-500">Fast triage · clear priorities · minimal noise</p>
+          <h1 className="text-[15px] font-bold tracking-tight text-base-100">Operations overview</h1>
+          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-base-600">
+            Fast triage · clear priorities · minimal noise
+          </p>
         </div>
         <ModeSwitcher mode={mode} onChange={setMode} />
       </div>

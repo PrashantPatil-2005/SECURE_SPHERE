@@ -50,7 +50,7 @@ export default function TimelineRibbon({ events, bucketCount = 40, activeBin, on
   );
 
   return (
-    <section className="rounded-lg border border-base-800 bg-base-900 p-4">
+    <section className="rounded-[10px] border border-base-800 bg-base-900 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-base-200">Timeline ribbon</h3>

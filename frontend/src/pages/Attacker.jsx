@@ -184,15 +184,27 @@ export default function Attacker() {
     setErr('');
     try {
       const res = await api.runAttack(scenario, spd);
-      if (res?.http_status === 401 || res?.http_status === 403) {
+      const code = res?.http_status;
+      if (code === 401 || code === 403) {
         setErr('AUTH_REQUIRED');
         return;
       }
-      if (!res?.ok || res?.status === 'error' || res?.status === 'busy') {
-        setErr(res?.message || 'launch failed');
+      if (res?.ok && res?.status !== 'error' && res?.status !== 'busy') return;
+
+      // Map common failure modes to a useful message instead of "launch failed".
+      let msg = typeof res?.message === 'string' ? res.message : '';
+      if (!msg) {
+        if (code === 409) msg = 'An attack is already running — wait for it to finish.';
+        else if (code === 429) msg = 'Rate limit hit (5 launches / hour). Wait a bit before retrying.';
+        else if (code === 400) msg = 'Backend rejected the request (bad scenario or speed).';
+        else if (code >= 500) msg = `Backend error ${code}. Check backend logs.`;
+        else if (!code) msg = 'No response from backend.';
+        else msg = `Launch failed (${code}).`;
       }
+      setErr(msg);
     } catch (e) {
-      setErr(String(e?.message || e));
+      // Thrown by fetch itself — backend unreachable / DNS / CORS / network.
+      setErr(`Cannot reach backend — ${String(e?.message || e)}`);
     }
   };
 
@@ -251,8 +263,14 @@ export default function Attacker() {
             </div>
           </div>
         ) : err && (
-          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 font-mono text-xs text-red-300">
-            {err}
+          <div className="flex items-start justify-between gap-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 font-mono text-xs text-red-300">
+            <span className="min-w-0 break-words">{String(err)}</span>
+            <button
+              onClick={() => setErr('')}
+              className="shrink-0 rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-200 hover:bg-red-500/20"
+            >
+              dismiss
+            </button>
           </div>
         )}
 
