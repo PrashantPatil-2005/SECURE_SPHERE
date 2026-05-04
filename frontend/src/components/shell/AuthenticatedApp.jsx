@@ -31,11 +31,11 @@ import { readPersistedTheme } from '@/lib/themeDom';
 import Dashboard from '@/pages/Dashboard';
 import Events from '@/pages/Events';
 import Incidents from '@/pages/Incidents';
+import Campaigns from '@/pages/Campaigns';
 import Topology from '@/pages/Topology';
 import RiskScores from '@/pages/RiskScores';
 import System from '@/pages/System';
 import Mitre from '@/pages/Mitre';
-import Intro from '@/pages/Intro';
 import Replay from '@/pages/Replay';
 import Audit from '@/pages/Audit';
 import Settings from '@/pages/Settings';
@@ -210,11 +210,6 @@ export default function AuthenticatedApp({ onLogout }) {
 
       if (e.code === 'Digit1') {
         e.preventDefault();
-        navigate('/intro');
-        return;
-      }
-      if (e.code === 'Digit2') {
-        e.preventDefault();
         navigate('/dashboard');
         return;
       }
@@ -327,7 +322,6 @@ export default function AuthenticatedApp({ onLogout }) {
               transition={{ duration: 0.18 }}
             >
               <Routes>
-                <Route path="/intro" element={<Intro />} />
                 <Route
                   path="/dashboard"
                   element={
@@ -346,6 +340,7 @@ export default function AuthenticatedApp({ onLogout }) {
                   path="/incidents"
                   element={<Incidents incidents={incidents} onReplayRequest={() => navigate('/topology')} />}
                 />
+                <Route path="/campaigns" element={<Campaigns />} />
                 <Route
                   path="/topology"
                   element={<Topology topology={topology} riskScores={riskScores} incidents={incidents} />}

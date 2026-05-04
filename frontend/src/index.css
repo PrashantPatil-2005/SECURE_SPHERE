@@ -299,6 +299,32 @@ header:where([class*="border-b"]) {
   transition: box-shadow 160ms ease;
 }
 
+/* Browser autofill — preserve token text/bg in both themes.
+   Webkit fills its own yellow bg + forces text color, hiding typed value.
+   Fixes: paint text via -webkit-text-fill-color, mask bg with inset shadow. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--base-100);
+  caret-color: var(--base-100);
+  -webkit-box-shadow: 0 0 0 1000px var(--base-800) inset;
+  box-shadow: 0 0 0 1000px var(--base-800) inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Ensure all native inputs/textareas inherit visible text color, even when
+   page-level color cascades fail (some forms wrap inputs in colorless divs). */
+input, textarea, select {
+  color: var(--base-100);
+}
+input::placeholder, textarea::placeholder {
+  color: var(--base-500);
+  opacity: 1;
+}
+
 /* Severity dot pulse — colored by CSS var --dot-color */
 @keyframes dotPulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--dot-color, rgba(239,68,68,0.6)); }

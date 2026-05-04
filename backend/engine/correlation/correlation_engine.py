@@ -144,6 +144,21 @@ except Exception as _ti_err:
     logging.warning("Threat intel unavailable: %s", _ti_err)
     _TI_AVAILABLE = False
 
+# Campaign Aggregation Layer — groups incidents by attacker into campaigns
+# so Discord/UI emit one evolving alert per actor instead of one per rule fire.
+try:
+    from correlation.campaign_aggregator import CampaignAggregator
+    from correlation.notification_dispatcher import NotificationDispatcher
+    _CAMPAIGN_AVAILABLE = True
+except Exception:
+    try:
+        from campaign_aggregator import CampaignAggregator         # docker layout
+        from notification_dispatcher import NotificationDispatcher
+        _CAMPAIGN_AVAILABLE = True
+    except Exception as _camp_err:
+        logging.warning("Campaign aggregator unavailable: %s", _camp_err)
+        _CAMPAIGN_AVAILABLE = False
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -346,8 +361,37 @@ class CorrelationEngine:
         self.incident_cooldowns: dict = {}
         self.cooldown_duration = timedelta(minutes=5)
 
-        # Discord per-type rate limiting
+        # Discord per-type rate limiting (legacy — superseded by campaign layer
+        # when _CAMPAIGN_AVAILABLE is True; kept as fallback if aggregator init
+        # fails so we still get *some* notification).
         self._discord_last_sent: dict = {}   # incident_type → datetime
+
+        # Campaign Aggregation Layer
+        self.aggregator: Optional[CampaignAggregator] = None
+        self.dispatcher: Optional[NotificationDispatcher] = None
+        if _CAMPAIGN_AVAILABLE:
+            try:
+                pg_kwargs = {
+                    "host":     os.getenv("POSTGRES_HOST", "database"),
+                    "port":     int(os.getenv("POSTGRES_PORT", 5432)),
+                    "dbname":   os.getenv("POSTGRES_DB", "securisphere_db"),
+                    "user":     os.getenv("POSTGRES_USER", "securisphere_user"),
+                    "password": os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
+                }
+                if os.getenv("DATABASE_URL"):
+                    # psycopg2.connect accepts a DSN string OR kwargs, not both;
+                    # when DATABASE_URL is set, prefer it via the `dsn` field.
+                    pg_kwargs = {"dsn": os.getenv("DATABASE_URL")}
+                self.aggregator = CampaignAggregator(self.redis, pg_kwargs)
+                self.dispatcher = NotificationDispatcher(self.redis, self.aggregator)
+                threading.Thread(
+                    target=self._campaign_sweeper, daemon=True,
+                ).start()
+                logger.info("Campaign aggregator + notification dispatcher initialised")
+            except Exception as exc:
+                logger.warning("Campaign layer init failed: %s", exc)
+                self.aggregator = None
+                self.dispatcher = None
 
         # Ordered rule list (run against every new event)
         self.rules = [
@@ -828,9 +872,37 @@ class CorrelationEngine:
         print("════════════════════════════════════════════")
         print("\033[0m")
 
-        if incident.get("severity") in ("high", "critical"):
-            # Run in a daemon thread so the up-to-8s narrative poll inside
-            # _send_discord_alert never blocks the main event loop.
+        # Campaign Aggregation Layer
+        # ──────────────────────────
+        # Attach this incident to its actor's open campaign (or open a new
+        # one). The dispatcher emits ONE Discord message per campaign and
+        # PATCHes it as the campaign grows — replacing the legacy
+        # per-incident alert so 3 sequential incidents from one attacker
+        # collapse into 1 evolving notification.
+        campaign_dispatched = False
+        if self.aggregator is not None and self.dispatcher is not None:
+            try:
+                campaign, change_kind = self.aggregator.ingest(incident)
+                if campaign:
+                    incident["campaign_id"] = campaign.get("campaign_id")
+                    threading.Thread(
+                        target=self.dispatcher.dispatch,
+                        args=(campaign, change_kind),
+                        daemon=True,
+                    ).start()
+                    campaign_dispatched = True
+                    logger.info(
+                        "incident %s → campaign %s (%s)",
+                        incident.get("incident_id"),
+                        campaign.get("campaign_id"),
+                        change_kind,
+                    )
+            except Exception as exc:
+                logger.warning("campaign aggregation failed: %s", exc)
+
+        # Legacy fallback — only fires if the campaign layer is unavailable
+        # or failed. Keeps the system alerting on bare-bones deployments.
+        if not campaign_dispatched and incident.get("severity") in ("high", "critical"):
             try:
                 threading.Thread(
                     target=self._send_discord_alert,
@@ -968,6 +1040,25 @@ class CorrelationEngine:
         except Exception as exc:
             logger.warning("Narration task failed for %s: %s",
                            incident.get("incident_id"), exc)
+
+    def _campaign_sweeper(self) -> None:
+        """Background janitor: closes campaigns idle past CAMPAIGN_IDLE_TIMEOUT.
+
+        Runs every 60 s. Stale campaigns are flipped to status='closed' with
+        closed_reason='idle_timeout' so the next incident from the same
+        actor opens a fresh campaign rather than appending to a multi-day
+        record.
+        """
+        while True:
+            time.sleep(60)
+            if self.aggregator is None:
+                continue
+            try:
+                n = self.aggregator.sweep_idle()
+                if n:
+                    logger.info("closed %d idle campaigns", n)
+            except Exception as exc:
+                logger.debug("campaign sweep error: %s", exc)
 
     def _send_discord_alert(self, incident: dict) -> None:
         """Send a rich-embed Discord notification with exponential-backoff retry."""

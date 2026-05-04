@@ -18,7 +18,6 @@ const PATH_LABELS = {
   '/audit':     ['Audit', 'Logs'],
   '/system':    ['System', 'Health'],
   '/settings':  ['Settings', 'Preferences'],
-  '/intro':     ['Intro', 'Tour'],
 };
 
 export default function Header({

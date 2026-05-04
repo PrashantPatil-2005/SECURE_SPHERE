@@ -14,8 +14,7 @@ const SECTIONS = [
   {
     title: 'Navigation',
     items: [
-      { keys: ['1'], label: 'Go to Intro' },
-      { keys: ['2'], label: 'Go to Dashboard' },
+      { keys: ['1'], label: 'Go to Dashboard' },
     ],
   },
   {

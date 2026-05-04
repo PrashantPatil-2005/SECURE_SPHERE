@@ -5,7 +5,6 @@ import SidebarNav from '@/components/nav/SidebarNav';
 import TopNav from '@/components/nav/TopNav';
 import CommandPalette from '@/components/nav/CommandPalette';
 import AIChatPanel from '@/components/ai/AIChatPanel';
-import AIThoughtStream from '@/components/ai/AIThoughtStream';
 import { useCommandPalette } from '@/hooks/useCommandPalette';
 import { CommandPaletteBridgeContext } from '@/contexts/CommandPaletteBridge';
 
@@ -197,8 +196,6 @@ export default function DashboardLayout({
                 </button>
               </div>
             )}
-
-            {<AIThoughtStream />}
 
             {toolbar}
 

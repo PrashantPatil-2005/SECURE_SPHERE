@@ -61,6 +61,13 @@ function normalizeTopology(raw) {
 export const api = {
   getEvents: (limit = 100) => request(`/api/events?limit=${limit}`),
   getIncidents: (limit = 50) => request(`/api/incidents?limit=${limit}`),
+  getCampaigns: ({ status = 'all', severity = '', limit = 50 } = {}) => {
+    const params = new URLSearchParams({ status, limit: String(limit) });
+    if (severity) params.set('severity', severity);
+    return request(`/api/campaigns?${params.toString()}`);
+  },
+  getCampaign: (id) => request(`/api/campaigns/${encodeURIComponent(id)}`),
+  getCampaignStats: () => request('/api/campaigns/stats'),
   getMetrics: () => request('/api/metrics'),
   getRiskScores: () => request('/api/risk-scores'),
   getRiskAccounts: () => request('/api/v2/risk/accounts'),
