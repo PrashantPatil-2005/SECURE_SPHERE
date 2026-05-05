@@ -6,6 +6,7 @@
    All UI should use `base-*` tokens so surfaces swap cleanly. */
 
 :root {
+  color-scheme: light;
   /* Light — white-based */
   --base-50: #0a0a0a;
   --base-100: #171717;
@@ -48,6 +49,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   /* Dark — black-based */
   --base-50: #fafafa;
   --base-100: #f5f5f5;
@@ -316,12 +318,16 @@ select:-webkit-autofill {
 }
 
 /* Ensure all native inputs/textareas inherit visible text color, even when
-   page-level color cascades fail (some forms wrap inputs in colorless divs). */
+   page-level color cascades fail (some forms wrap inputs in colorless divs).
+   Use !important to defeat UA stylesheets that force input text color. */
 input, textarea, select {
-  color: var(--base-100);
+  color: var(--base-100) !important;
+  caret-color: var(--base-100);
+  -webkit-text-fill-color: var(--base-100);
 }
 input::placeholder, textarea::placeholder {
-  color: var(--base-500);
+  color: var(--base-500) !important;
+  -webkit-text-fill-color: var(--base-500);
   opacity: 1;
 }
 

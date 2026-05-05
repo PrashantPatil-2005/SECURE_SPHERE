@@ -3,8 +3,8 @@ services:
     image: redis:7.2-alpine
     container_name: securisphere-redis
     # Port not exposed by default. Uncomment for local dev only.
-    # ports:
-    #   - "${REDIS_PORT:-6379}:6379"
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
     expose:
       - "6379"
     command: ["redis-server", "--save", "60", "1", "--maxmemory-policy", "allkeys-lru"]

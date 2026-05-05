@@ -8,7 +8,7 @@ import uuid
 # Connect to Redis
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-print("🌱 Seeding dashboard with normal traffic data...")
+print("Seeding dashboard with normal traffic data...")
 
 # Generate 50 fake normal events
 layers = ['network', 'api', 'auth']
@@ -44,4 +44,4 @@ for i in range(50):
     # Push to Redis List so Backend API can read it
     r.lpush(f"events:{layer}", json.dumps(event))
 
-print("✅ Added 50 historical events. Dashboard timeline should now look active.")
+print("Added 50 historical events. Dashboard timeline should now look active.")
