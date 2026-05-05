@@ -235,6 +235,10 @@ services:
       ADMIN_BOOTSTRAP_USER: ${ADMIN_BOOTSTRAP_USER:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      HF_API_TOKEN: ${HF_API_TOKEN:-}
+      HF_MODEL: ${HF_MODEL:-Qwen/Qwen2.5-72B-Instruct}
       SECURISPHERE_API_URL: http://api-server:5000
       SECURISPHERE_AUTH_URL: http://auth-service:5001
       SECURISPHERE_BACKEND_URL: http://localhost:8000
@@ -315,6 +319,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
       POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
       HF_API_TOKEN: ${HF_API_TOKEN:-}
       HF_MODEL: ${HF_MODEL:-Qwen/Qwen2.5-72B-Instruct}
     depends_on:

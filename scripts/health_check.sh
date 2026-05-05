@@ -46,12 +46,12 @@ fi
 echo -n "Checking Database Tables... "
 TABLE_COUNT=$(docker exec securisphere-db psql -U securisphere_user -d securisphere_db -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ')
 
-if [ "$TABLE_COUNT" -eq 4 ] 2>/dev/null; then
+if [ "$TABLE_COUNT" -ge 4 ] 2>/dev/null; then
     echo -e "${GREEN}PASS${NC} (Found $TABLE_COUNT tables)"
     PASS=$((PASS + 1))
 else
     echo -e "${RED}FAIL${NC}"
-    echo "  Expected 4 tables, found: $TABLE_COUNT"
+    echo "  Expected at least 4 tables, found: $TABLE_COUNT"
     FAIL=$((FAIL + 1))
 fi
 
@@ -73,7 +73,7 @@ fi
 
 # ---- Check API Server ----
 echo -n "Checking API Server... "
-API_STATUS=$(curl -s http://localhost:5000/api/health | grep -o '"status": "healthy"')
+API_STATUS=$(curl -s http://localhost:5000/api/health | grep -E '"status"\s*:\s*"healthy"')
 
 if [ ! -z "$API_STATUS" ]; then
     echo -e "${GREEN}PASS${NC}"
@@ -86,7 +86,7 @@ fi
 
 # ---- Check Auth Service ----
 echo -n "Checking Auth Service... "
-AUTH_STATUS=$(curl -s http://localhost:5001/auth/status | grep -o '"status": "running"')
+AUTH_STATUS=$(curl -s http://localhost:5001/auth/status | grep -E '"status"\s*:\s*"running"')
 
 if [ ! -z "$AUTH_STATUS" ]; then
     echo -e "${GREEN}PASS${NC}"
@@ -99,7 +99,7 @@ fi
 
 # ---- Check API Monitor ----
 echo -n "Checking API Monitor... "
-APIMON_STATUS=$(curl -s http://localhost:5050/monitor/health | grep -o '"status": "running"')
+APIMON_STATUS=$(curl -s http://localhost:5050/monitor/health | grep -E '"status"\s*:\s*"running"')
 
 if [ ! -z "$APIMON_STATUS" ]; then
     echo -e "${GREEN}PASS${NC}"
@@ -112,7 +112,7 @@ fi
 
 # ---- Check Auth Monitor ----
 echo -n "Checking Auth Monitor... "
-AUTHMON_STATUS=$(curl -s http://localhost:5060/monitor/health | grep -o '"status": "running"')
+AUTHMON_STATUS=$(curl -s http://localhost:5060/monitor/health | grep -E '"status"\s*:\s*"running"')
 
 if [ ! -z "$AUTHMON_STATUS" ]; then
     echo -e "${GREEN}PASS${NC}"
@@ -138,7 +138,7 @@ fi
 # ---- Check Backend API ----
 echo -n "Checking Backend API... "
 BACKEND_HEALTH=$(curl -s http://localhost:8000/api/health 2>/dev/null)
-if echo "$BACKEND_HEALTH" | grep -q '"status": "healthy"'; then
+if echo "$BACKEND_HEALTH" | grep -Eq '"status"\s*:\s*"healthy"'; then
     echo -e "${GREEN}PASS${NC}"
     PASS=$((PASS + 1))
 else
@@ -161,7 +161,7 @@ fi
 # ---- Check Correlation Engine ----
 echo -n "Checking Correlation Engine... "
 ENGINE_HEALTH=$(curl -s http://localhost:5070/engine/health 2>/dev/null)
-if echo "$ENGINE_HEALTH" | grep -q '"status":"running"'; then
+if echo "$ENGINE_HEALTH" | grep -Eq '"status"\s*:\s*"running"'; then
     echo -e "${GREEN}PASS${NC}"
     PASS=$((PASS + 1))
 else

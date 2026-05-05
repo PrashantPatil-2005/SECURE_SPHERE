@@ -13,3 +13,5 @@ psycopg2-binary==2.9.9
 PyJWT==2.8.0
 bcrypt==4.1.2
 huggingface_hub==0.19.4
+groq==0.4.2
+openai==1.12.0

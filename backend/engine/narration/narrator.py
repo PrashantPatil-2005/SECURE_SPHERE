@@ -29,38 +29,11 @@ logger = logging.getLogger("Narrator")
 HF_MODEL = os.getenv("HF_MODEL", "Qwen/Qwen2.5-72B-Instruct")
 HF_TIMEOUT = int(os.getenv("HF_TIMEOUT", "60"))
 
-_client = None
-_CLIENT_INIT_FAILED = False
-
+from ai.client import generate_completion
 
 def _get_client():
-    """Lazy-initialize the HF InferenceClient. Returns None if unavailable."""
-    global _client, _CLIENT_INIT_FAILED
-
-    if _client is not None:
-        return _client
-    if _CLIENT_INIT_FAILED:
-        return None
-
-    token = os.getenv("HF_API_TOKEN", "").strip()
-    if not token or token == "your_key_here":
-        logger.info("HF_API_TOKEN not set — AI narration disabled")
-        _CLIENT_INIT_FAILED = True
-        return None
-
-    try:
-        from huggingface_hub import InferenceClient
-        _client = InferenceClient(token=token, timeout=HF_TIMEOUT)
-        logger.info("Hugging Face InferenceClient initialized (model=%s)", HF_MODEL)
-        return _client
-    except ImportError:
-        logger.warning("huggingface_hub package not installed — AI narration disabled")
-        _CLIENT_INIT_FAILED = True
-        return None
-    except Exception as exc:
-        logger.warning("Failed to initialize HF client: %s", exc)
-        _CLIENT_INIT_FAILED = True
-        return None
+    """Deprecated: using shared ai.client now."""
+    return True
 
 
 def _build_prompt(incident: Dict[str, Any]) -> str:
@@ -116,45 +89,30 @@ def _build_prompt(incident: Dict[str, Any]) -> str:
 
 def generate_narrative(incident: Dict[str, Any]) -> Optional[str]:
     """
-    Generate a structured JSON attack narrative for an incident using Hugging Face.
+    Generate a structured JSON attack narrative for an incident.
     Returns the JSON narrative string, or None if generation is unavailable/failed.
     Never raises.
     """
-    client = _get_client()
-    if client is None:
-        return None
-
     try:
         import json
         prompt = _build_prompt(incident)
         
-        # We append a trailing `{` if response_format="json_object" isn't strictly enforced by HF API for this model
-        # The Qwen model typically supports json output if instructed well.
+        narrative = generate_completion(prompt, max_tokens=1500, temperature=0.2)
         
-        response = client.chat_completion(
-            model=HF_MODEL,
-            messages=[
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=1500,
-            temperature=0.2,
-        )
-        narrative = (response.choices[0].message.content or "").strip()
-        
+        if not narrative:
+            logger.warning("AI returned empty narrative for %s",
+                           incident.get("incident_id"))
+            return None
+            
         # Strip potential markdown formatting if the LLM leaked it
         if narrative.startswith("```json"):
             narrative = narrative[7:]
         if narrative.startswith("```"):
             narrative = narrative[3:]
-        if narrative.endswith("```"):
-            narrative = narrative[:-3]
+        if narrative.splitlines()[-1].startswith("```"):
+            narrative = "\n".join(narrative.splitlines()[:-1])
         narrative = narrative.strip()
         
-        if not narrative:
-            logger.warning("HuggingFace returned empty narrative for %s",
-                           incident.get("incident_id"))
-            return None
-            
         # Verify it parses as JSON
         json.loads(narrative)
             

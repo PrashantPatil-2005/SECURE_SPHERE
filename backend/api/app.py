@@ -1322,6 +1322,19 @@ def _bootstrap_database_schema():
         with conn:
             with conn.cursor() as cur:
                 cur.execute(sql_path.read_text(encoding="utf-8"))
+        # Apply numbered migrations sitting next to init_db.sql so newer
+        # tables (campaigns, etc.) exist even when only init_db.sql ships
+        # in the deployment image.
+        migrations_dir = sql_path.parent / "migrations"
+        if migrations_dir.is_dir():
+            for mig in sorted(migrations_dir.glob("*.sql")):
+                try:
+                    with conn:
+                        with conn.cursor() as cur:
+                            cur.execute(mig.read_text(encoding="utf-8"))
+                    logger.info("Applied migration %s", mig.name)
+                except Exception as mig_exc:
+                    logger.warning("Migration %s skipped: %s", mig.name, mig_exc)
         conn.close()
         logger.info("Database bootstrap completed from %s", sql_path)
     except Exception as exc:
@@ -2481,6 +2494,44 @@ def api_attack_run():
     t.start()
 
     return jsonify({"status": "started", "scenario": scenario, "pid": proc.pid, "mode": "subprocess"})
+
+
+@app.route('/api/dev/fire-kill-chain', methods=['POST', 'GET'])
+def api_dev_fire_kill_chain():
+    """Demo + debug endpoint. Synthesizes a full kill chain incident and
+    pushes it through the same publish path as the simulator. Verifies
+    Redis → socket.io → CriticalAlertModal end-to-end without needing the
+    correlation-engine container."""
+    sim = _get_simulator()
+    src_ip = request.args.get("ip") or "10.0.2.4"
+    # Seed buffer with one event per required layer so the synthetic
+    # incident has realistic fields. Idempotent — re-firing just adds more.
+    seed_events = [
+        {
+            "event_id":     str(uuid.uuid4()),
+            "timestamp":    datetime.utcnow().isoformat() + "Z",
+            "source_layer": layer,
+            "event_type":   etype,
+            "severity":     {"level": "high"},
+            "source_entity": {"ip": src_ip, "service": svc},
+            "destination_entity": {"ip": "10.0.1.20", "service": dst},
+            "mitre_technique": mitre,
+        }
+        for layer, etype, svc, dst, mitre in [
+            ("network", "port_scan",       None,           "web-app",      "T1046"),
+            ("auth",    "login_failed",    None,           "auth-service", "T1110"),
+            ("api",     "data_access",     "auth-service", "api-gateway",  "T1078"),
+        ]
+    ]
+    for ev in seed_events:
+        sim._correlator.observe(ev)
+    incident = sim._correlator.force_fire(src_ip)
+    return jsonify({
+        "status": "ok" if incident else "skipped",
+        "incident_id": incident.get("incident_id") if incident else None,
+        "source_ip":   src_ip,
+        "buffer_size": len(sim._correlator._buffer),
+    })
 
 
 @app.route('/api/attack/status', methods=['GET'])
