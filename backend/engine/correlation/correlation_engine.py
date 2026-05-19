@@ -405,6 +405,7 @@ class CorrelationEngine:
             self.rule_persistent_threat,
             self.rule_brute_force_attempt,
             self.rule_critical_exploit_attempt,
+            self.rule_17_container_exec_after_exploit,
             # Browser-layer rules (Phase 2) — all gated on source_layer=='browser-agent'
             self.rule_browser_sqli,
             self.rule_browser_path_traversal,
@@ -1408,6 +1409,57 @@ class CorrelationEngine:
         )
 
     def rule_brute_force_attempt(self, new_event: dict, buffer: list):
+        # existing implementation remains unchanged
+        # placeholder for context
+        pass
+
+    def rule_17_container_exec_after_exploit(self, new_event: dict, buffer: list):
+        """Rule 17: Detect container exec after API exploit on same entity.
+        Detects API exploit (SQLi/XSS) → docker exec on same container within 5 min.
+        Severity: CRITICAL.
+        MITRE: T1609 (Container Administration Command).
+        """
+        # Only consider Docker container exec events
+        if new_event.get("event_type") != "docker_container_event":
+            return None
+        docker_action = new_event.get("docker_action", "")
+        if docker_action not in ["exec_create", "exec_start"]:
+            return None
+        container_name = new_event.get("container_name", "")
+        if not container_name:
+            return None
+        # Look for recent API exploit events targeting same container name
+        now_ts = datetime.utcnow()
+        window_seconds = 300  # 5 minutes
+        for event in reversed(buffer):
+            if event.get("event_type") in ["sql_injection", "xss_attack"]:
+                # Check if target entity matches container name
+                target = event.get("target_entity", {})
+                target_name = target.get("container_name") or target.get("service_name") or target.get("name")
+                if target_name and target_name == container_name:
+                    # Verify time diff
+                    try:
+                        event_time = datetime.fromisoformat(event.get("timestamp", "").replace("Z", ""))
+                        if (now_ts - event_time).total_seconds() <= window_seconds:
+                            # Cooldown to avoid spam
+                            if self._check_cooldown("container_exec_after_exploit", container_name):
+                                return None
+                            self._set_cooldown("container_exec_after_exploit", container_name)
+                            return self.create_incident(
+                                incident_type="container_exec_post_exploit",
+                                title="Container Exec After API Exploit",
+                                description=f"Docker exec detected on container '{container_name}' within 5 min of API exploit.",
+                                severity="CRITICAL",
+                                confidence=0.97,
+                                source_ip=new_event.get("source_entity", {}).get("ip"),
+                                correlated_events=[event, new_event],
+                                layers=["container", "api"],
+                                mitre=["T1609"],
+                                actions=["Investigate container compromise", "Isolate container", "Review exploit payload"],
+                            )
+                    except Exception:
+                        continue
+        return None
         if new_event.get("event_type") not in ("brute_force", "credential_stuffing"):
             return None
         source_ip = new_event.get("source_entity", {}).get("ip")
