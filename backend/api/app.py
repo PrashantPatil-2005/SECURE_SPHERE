@@ -20,6 +20,13 @@ from gevent import monkey
 # Patch gevent
 monkey.patch_all()
 
+# Docker: /app/ai; local dev: backend/ai (parent of backend/api).
+_here = Path(__file__).resolve()
+for _root in (_here.parent, _here.parent.parent):
+    if (_root / "ai" / "client.py").exists():
+        sys.path.insert(0, str(_root))
+        break
+
 from auth import auth_bp, token_required, role_required
 from topology_checks import bp as topology_checks_bp
 from ai_endpoints import bp as ai_bp
