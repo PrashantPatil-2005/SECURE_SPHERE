@@ -20,6 +20,7 @@ Webhook semantics used
 - 404 on PATCH means the message was deleted; we re-POST a fresh one.
 """
 
+import json
 import logging
 import os
 import threading
@@ -27,6 +28,14 @@ import time
 from typing import Any, Dict, Optional
 
 import requests
+
+try:
+    from alerts.email import send_campaign_email
+    _EMAIL_AVAILABLE = True
+except Exception:
+    _EMAIL_AVAILABLE = False
+    def send_campaign_email(*_a, **_kw):
+        return False
 
 logger = logging.getLogger("NotificationDispatcher")
 
@@ -85,6 +94,20 @@ class NotificationDispatcher:
             self._post_new(webhook_url, campaign)
         else:
             self._patch_existing(webhook_url, campaign, change_kind)
+
+        if _EMAIL_AVAILABLE and change_kind in ("created", "escalated"):
+            try:
+                send_campaign_email(campaign, change_kind)
+            except Exception as exc:
+                logger.debug("email alert skipped: %s", exc)
+
+        try:
+            self.redis.publish(
+                "campaign_escalated",
+                json.dumps({"campaign": campaign, "change_kind": change_kind}),
+            )
+        except Exception as exc:
+            logger.debug("campaign_escalated publish skipped: %s", exc)
 
     # ------------------------------------------------------------------
     # Helpers

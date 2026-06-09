@@ -151,6 +151,12 @@ export default function MttdPanel() {
             </table>
           </div>
         )}
+
+        <p className="mt-3 text-2xs text-base-500 border-t border-base-800 pt-3">
+          Churn benchmark (C1): service-centric correlation maintains chain completeness across
+          auth-service restarts — compare stable vs{' '}
+          <span className="font-mono text-base-400">recon_to_exfil_with_redeploy</span> scenarios.
+        </p>
       </CardContent>
     </Card>
   );

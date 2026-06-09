@@ -28,6 +28,12 @@ jobs:
       - name: Phase 13 unit tests (pure-Python modules)
         run: pytest tests/test_phase13_unit.py -q
 
+      - name: Service-centric correlation unit tests
+        run: pytest tests/test_service_correlation.py -q
+
+      - name: Churn resilience experiment (offline)
+        run: python scripts/churn_experiment.py --min-completeness 0.5
+
       - name: Compile-check every backend .py + cli
         run: |
           python -m compileall -q backend

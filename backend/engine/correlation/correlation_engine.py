@@ -34,6 +34,13 @@ from typing import Any, Optional
 from uuid import uuid4
 from flask import Flask, jsonify
 
+from shared.event_schema import (
+    normalize_event,
+    resolve_correlation_key,
+    filter_buffer_by_actor,
+    events_same_actor,
+)
+
 # Kill-chain reconstructor (sibling package)
 # Support both Docker layout (/app/kill_chain/) and local layout (../kill_chain/)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -183,7 +190,8 @@ RISK_DECAY_INTERVAL= int(os.getenv("RISK_DECAY_INTERVAL", 60))
 # Event bus mode: "pubsub" (legacy), "streams" (new only), "dual" (both — default).
 # Dual mode runs the PubSubBridge so monitors that still publish on the legacy
 # channel keep working while we migrate them one at a time.
-EVENT_BUS_MODE     = os.getenv("EVENT_BUS_MODE", "dual").lower()
+EVENT_BUS_MODE     = os.getenv("EVENT_BUS_MODE", "streams").lower()
+CORRELATION_MODE   = os.getenv("CORRELATION_MODE", "service").lower()
 CORRELATION_WORKERS= int(os.getenv("CORRELATION_WORKERS", 1))
 
 # Discord rate-limit: max 1 alert per incident_type per this many seconds
@@ -338,9 +346,11 @@ class CorrelationEngine:
             except Exception as exc:
                 logger.warning("Could not ensure kill_chain schema: %s", exc)
 
-        # Event buffer: all events within the correlation window
-        self.event_buffer: list = []
+        # Partitioned event buffers keyed by correlation_key (service-first)
+        self.event_buffers: dict = defaultdict(list)
+        self.event_buffer: list = []  # legacy alias — merged view
         self.buffer_lock  = threading.Lock()
+        self.correlation_mode = CORRELATION_MODE
 
         # Per-service (or fallback per-IP) risk state.
         # Keys are source_service_name when available, else source_ip.
@@ -395,6 +405,7 @@ class CorrelationEngine:
 
         # Ordered rule list (run against every new event)
         self.rules = [
+            self.rule_service_lateral_movement,
             self.rule_recon_to_exploit,
             self.rule_credential_compromise,
             self.rule_account_pivot,
@@ -587,6 +598,60 @@ class CorrelationEngine:
     def _set_cooldown(self, rule: str, key: str) -> None:
         self.incident_cooldowns[f"{rule}:{key}"] = datetime.now()
 
+    def _actor_key(self, event: dict) -> str:
+        if self.correlation_mode == "legacy":
+            ip = (event.get("source_entity") or {}).get("ip") or event.get("source_ip")
+            return str(ip) if ip else "unknown"
+        return event.get("correlation_key") or resolve_correlation_key(event)
+
+    def _actor_events(self, buffer: list, event: dict) -> list:
+        return filter_buffer_by_actor(buffer, event, mode=self.correlation_mode)
+
+    def _merged_buffer(self) -> list:
+        with self.buffer_lock:
+            merged: list = []
+            for part in self.event_buffers.values():
+                merged.extend(part)
+            return merged
+
+    def _prune_buffers(self) -> None:
+        cutoff = datetime.now() - timedelta(seconds=CORRELATION_WINDOW)
+        for key in list(self.event_buffers.keys()):
+            self.event_buffers[key] = [
+                e for e in self.event_buffers[key]
+                if datetime.fromisoformat(e["timestamp"].replace("Z", "")) > cutoff
+            ]
+            if not self.event_buffers[key]:
+                del self.event_buffers[key]
+        self.event_buffer = self._merged_buffer()
+
+    def _graph_reachable(self, src: str, dst: str) -> bool:
+        if not src or not dst or src == dst:
+            return False
+        try:
+            resp = requests.get(
+                "http://topology-collector:5080/topology/graph", timeout=2,
+            )
+            if resp.status_code != 200:
+                return True  # optimistic when topology unavailable
+            data = resp.json()
+            edges = data.get("edges") or []
+            adj = defaultdict(set)
+            for e in edges:
+                adj[e.get("source") or e.get("from")].add(e.get("target") or e.get("to"))
+            visited, stack = set(), [src]
+            while stack:
+                node = stack.pop()
+                if node == dst:
+                    return True
+                if node in visited:
+                    continue
+                visited.add(node)
+                stack.extend(adj.get(node, []))
+            return False
+        except Exception:
+            return True
+
     @staticmethod
     def _extract_username(events: list) -> Optional[str]:
         """Resolve the most relevant target username from a set of correlated events.
@@ -678,6 +743,16 @@ class CorrelationEngine:
             # extra wins so rules that already pass an explicit
             # target_username (e.g. account-pivot) keep precedence.
             incident.update(extra)
+
+        lead = correlated_events[0] if correlated_events else {}
+        incident.setdefault("source_service_name", next(
+            (e.get("source_service_name") for e in correlated_events if e.get("source_service_name")),
+            None,
+        ))
+        incident.setdefault(
+            "correlation_key",
+            lead.get("correlation_key") or resolve_correlation_key(lead),
+        )
 
         # --- Kill chain reconstruction ---
         if _KC_AVAILABLE:
@@ -883,14 +958,15 @@ class CorrelationEngine:
         campaign_dispatched = False
         if self.aggregator is not None and self.dispatcher is not None:
             try:
-                campaign, change_kind = self.aggregator.ingest(incident)
+                campaign, change_kind = self.aggregator.create_or_update_campaign(incident)
                 if campaign:
                     incident["campaign_id"] = campaign.get("campaign_id")
-                    threading.Thread(
-                        target=self.dispatcher.dispatch,
-                        args=(campaign, change_kind),
-                        daemon=True,
-                    ).start()
+                    if self.aggregator.should_alert(campaign):
+                        threading.Thread(
+                            target=self.dispatcher.dispatch,
+                            args=(campaign, change_kind),
+                            daemon=True,
+                        ).start()
                     campaign_dispatched = True
                     logger.info(
                         "incident %s → campaign %s (%s)",
@@ -1146,16 +1222,58 @@ class CorrelationEngine:
     # Correlation Rules
     # -----------------------------------------------------------------------
 
+    def rule_service_lateral_movement(self, new_event: dict, buffer: list):
+        """Topology-aware lateral movement using service identity."""
+        dst = new_event.get("destination_service_name") or (
+            (new_event.get("target_entity") or {}).get("service")
+        )
+        if not dst:
+            return None
+        actor_key = self._actor_key(new_event)
+        if self._check_cooldown("service_lateral", actor_key):
+            return None
+        actor_events = self._actor_events(buffer, new_event)
+        prior = None
+        for e in reversed(actor_events):
+            if e is new_event:
+                continue
+            ps = e.get("source_service_name") or (e.get("target_entity") or {}).get("service")
+            if ps and ps != dst:
+                prior = e
+                break
+        if not prior:
+            return None
+        src_svc = prior.get("destination_service_name") or (
+            (prior.get("target_entity") or {}).get("service")
+        ) or prior.get("source_service_name")
+        if not src_svc or not self._graph_reachable(src_svc, dst):
+            return None
+        self._set_cooldown("service_lateral", actor_key)
+        source_ip = (new_event.get("source_entity") or {}).get("ip")
+        path = [src_svc, dst]
+        return self.create_incident(
+            "service_lateral_movement",
+            "↔ Service Lateral Movement Detected",
+            f"Attack traversed {src_svc} → {dst} (key={actor_key})",
+            "high", 0.88, source_ip,
+            [prior, new_event],
+            list({prior.get("source_layer"), new_event.get("source_layer")} - {None}),
+            ["T1021", "T1570"],
+            ["Isolate affected services", "Review service mesh policies"],
+            {"service_path": path, "correlation_key": actor_key},
+        )
+
     def rule_recon_to_exploit(self, new_event: dict, buffer: list):
         if new_event.get("event_type") not in ("sql_injection", "path_traversal"):
             return None
+        actor_key = self._actor_key(new_event)
         source_ip = new_event.get("source_entity", {}).get("ip")
-        if not source_ip or self._check_cooldown("recon_to_exploit", source_ip):
+        if not actor_key or self._check_cooldown("recon_to_exploit", actor_key):
             return None
+        actor_events = self._actor_events(buffer, new_event)
         scans = [
-            e for e in buffer
-            if e.get("source_entity", {}).get("ip") == source_ip
-            and e.get("event_type") == "port_scan"
+            e for e in actor_events
+            if e.get("event_type") == "port_scan"
         ]
         if not scans:
             return None
@@ -1166,11 +1284,11 @@ class CorrelationEngine:
                 return None
         except Exception:
             return None
-        self._set_cooldown("recon_to_exploit", source_ip)
+        self._set_cooldown("recon_to_exploit", actor_key)
         return self.create_incident(
             "recon_to_exploitation",
             "Reconnaissance → Exploitation Chain Detected",
-            f"Source {source_ip} performed port recon followed by {new_event['event_type']}.",
+            f"Actor {actor_key} performed port recon followed by {new_event['event_type']}.",
             "critical", 0.92, source_ip,
             [scans[-1], new_event], ["network", "api"],
             ["T1046", "T1595", "T1190", "T1526"],
@@ -1180,18 +1298,19 @@ class CorrelationEngine:
     def rule_credential_compromise(self, new_event: dict, buffer: list):
         if new_event.get("event_type") != "suspicious_login":
             return None
+        actor_key = self._actor_key(new_event)
         source_ip = new_event.get("source_entity", {}).get("ip")
         username  = new_event.get("target_entity", {}).get("username")
-        if not source_ip or self._check_cooldown("credential_compromise", source_ip):
+        if not actor_key or self._check_cooldown("credential_compromise", actor_key):
             return None
+        actor_events = self._actor_events(buffer, new_event)
         attacks = [
-            e for e in buffer
-            if e.get("source_entity", {}).get("ip") == source_ip
-            and e.get("event_type") in ("brute_force", "credential_stuffing")
+            e for e in actor_events
+            if e.get("event_type") in ("brute_force", "credential_stuffing")
         ]
         if not attacks:
             return None
-        self._set_cooldown("credential_compromise", source_ip)
+        self._set_cooldown("credential_compromise", actor_key)
         return self.create_incident(
             "credential_compromise",
             "🔓 Credential Compromise Detected",
@@ -1233,7 +1352,7 @@ class CorrelationEngine:
                 continue
             if e.get("event_type") != "login_success":
                 continue
-            if (e.get("source_entity") or {}).get("ip") != source_ip:
+            if not events_same_actor(e, new_event, mode=self.correlation_mode):
                 continue
             try:
                 ets = datetime.fromisoformat(e["timestamp"].replace("Z", ""))
@@ -1271,25 +1390,26 @@ class CorrelationEngine:
         )
 
     def rule_full_kill_chain(self, new_event: dict, buffer: list):
+        actor_key = self._actor_key(new_event)
         source_ip = new_event.get("source_entity", {}).get("ip")
-        if not source_ip or self._check_cooldown("full_kill_chain", source_ip):
+        if not actor_key or self._check_cooldown("full_kill_chain", actor_key):
             return None
-        ip_events = [e for e in buffer if e.get("source_entity", {}).get("ip") == source_ip]
-        layers    = {e.get("source_layer") for e in ip_events}
+        actor_events = self._actor_events(buffer, new_event)
+        layers    = {e.get("source_layer") for e in actor_events}
         if not {"network", "api", "auth"}.issubset(layers):
             return None
-        self._set_cooldown("full_kill_chain", source_ip)
+        self._set_cooldown("full_kill_chain", actor_key)
 
         # Build service traversal path for this multi-vector campaign
         return self.create_incident(
             "full_kill_chain",
             "🚨 MULTI-VECTOR ATTACK CAMPAIGN",
             (
-                f"Source {source_ip} attacking across Network, API, and Auth layers. "
-                f"Correlated {len(ip_events)} events."
+                f"Actor {actor_key} attacking across Network, API, and Auth layers. "
+                f"Correlated {len(actor_events)} events."
             ),
             "critical", 0.97, source_ip,
-            ip_events, list(layers),
+            actor_events, list(layers),
             ["T1046", "T1595", "T1190", "T1110", "T1021", "T1570"],
             ["ISOLATE HOST IMMEDIATELY", "Trigger incident response", "Capture forensic snapshot"],
         )
@@ -1299,21 +1419,22 @@ class CorrelationEngine:
             "rate_abuse", "sql_injection", "credential_stuffing", "brute_force"
         ):
             return None
+        actor_key = self._actor_key(new_event)
         source_ip = new_event.get("source_entity", {}).get("ip")
-        if not source_ip or self._check_cooldown("api_auth_combined", source_ip):
+        if not actor_key or self._check_cooldown("api_auth_combined", actor_key):
             return None
-        ip_events = [e for e in buffer if e.get("source_entity", {}).get("ip") == source_ip]
-        has_api  = any(e for e in ip_events if e.get("source_layer") == "api")
-        has_auth = any(e for e in ip_events if e.get("source_layer") == "auth")
+        actor_events = self._actor_events(buffer, new_event)
+        has_api  = any(e for e in actor_events if e.get("source_layer") == "api")
+        has_auth = any(e for e in actor_events if e.get("source_layer") == "auth")
         if not (has_api and has_auth):
             return None
-        self._set_cooldown("api_auth_combined", source_ip)
+        self._set_cooldown("api_auth_combined", actor_key)
         return self.create_incident(
             "automated_attack_tool",
             "🤖 Automated Attack Tool Detected",
-            f"Source {source_ip} targeting API and Auth endpoints simultaneously.",
+            f"Actor {actor_key} targeting API and Auth endpoints simultaneously.",
             "high", 0.88, source_ip,
-            ip_events, ["api", "auth"],
+            actor_events, ["api", "auth"],
             ["T1110", "T1190", "T1071", "T1078"],
             ["Rate limit IP", "Deploy CAPTCHA", "Block at load-balancer"],
         )
@@ -1346,17 +1467,18 @@ class CorrelationEngine:
     def rule_data_exfiltration(self, new_event: dict, buffer: list):
         if new_event.get("event_type") != "sensitive_access":
             return None
+        actor_key = self._actor_key(new_event)
         source_ip = new_event.get("source_entity", {}).get("ip")
-        if not source_ip or self._check_cooldown("data_exfiltration", source_ip):
+        if not actor_key or self._check_cooldown("data_exfiltration", actor_key):
             return None
+        actor_events = self._actor_events(buffer, new_event)
         exploits = [
-            e for e in buffer
-            if e.get("source_entity", {}).get("ip") == source_ip
-            and e.get("event_type") in ("sql_injection", "path_traversal")
+            e for e in actor_events
+            if e.get("event_type") in ("sql_injection", "path_traversal")
         ]
         if not exploits:
             return None
-        self._set_cooldown("data_exfiltration", source_ip)
+        self._set_cooldown("data_exfiltration", actor_key)
         return self.create_incident(
             "data_exfiltration_risk",
             "📤 Data Exfiltration Risk Detected",
@@ -1378,40 +1500,54 @@ class CorrelationEngine:
         Cooldown prevents re-firing on the same source for the duration
         defined in ``self.cooldown_seconds``.
         """
+        actor_key = self._actor_key(new_event)
         source_ip = new_event.get("source_entity", {}).get("ip")
-        if not source_ip or self._check_cooldown("persistent_threat", source_ip):
+        if not actor_key or self._check_cooldown("persistent_threat", actor_key):
             return None
-        ip_events = [e for e in buffer if e.get("source_entity", {}).get("ip") == source_ip]
-        if len(ip_events) < 2:
+        actor_events = self._actor_events(buffer, new_event)
+        if len(actor_events) < 2:
             return None
         # Best-effort duration calc for the description; not gating.
         duration = 0.0
         try:
-            times = [datetime.fromisoformat(e["timestamp"].replace("Z", "")) for e in ip_events]
+            times = [datetime.fromisoformat(e["timestamp"].replace("Z", "")) for e in actor_events]
             if times:
                 duration = (max(times) - min(times)).total_seconds()
         except Exception:
             duration = 0.0
-        unique_types = len({e.get("event_type") for e in ip_events})
-        layers = list({e.get("source_layer") for e in ip_events if e.get("source_layer")})
-        self._set_cooldown("persistent_threat", source_ip)
+        unique_types = len({e.get("event_type") for e in actor_events})
+        layers = list({e.get("source_layer") for e in actor_events if e.get("source_layer")})
+        self._set_cooldown("persistent_threat", actor_key)
         return self.create_incident(
             "persistent_threat",
             "⏱️ Persistent Threat Actor",
             (
-                f"Source {source_ip} generated {len(ip_events)} events "
+                f"Actor {actor_key} generated {len(actor_events)} events "
                 f"over {duration / 60:.1f} minutes ({unique_types} distinct attack types)."
             ),
             "high", 0.82, source_ip,
-            ip_events, layers or ["api"],
+            actor_events, layers or ["api"],
             ["T1595", "T1071"],
             ["Block IP", "Enrich via threat intelligence", "Enable full packet capture"],
         )
 
     def rule_brute_force_attempt(self, new_event: dict, buffer: list):
-        # existing implementation remains unchanged
-        # placeholder for context
-        pass
+        if new_event.get("event_type") not in ("brute_force", "credential_stuffing"):
+            return None
+        actor_key = self._actor_key(new_event)
+        source_ip = new_event.get("source_entity", {}).get("ip")
+        if not actor_key or self._check_cooldown("brute_force_attempt", actor_key):
+            return None
+        self._set_cooldown("brute_force_attempt", actor_key)
+        return self.create_incident(
+            "brute_force_attempt",
+            "🔐 Brute Force / Stuffing Attempt",
+            f"Actor {actor_key} performing {new_event['event_type']}.",
+            "medium", 0.80, source_ip,
+            [new_event], ["auth"],
+            ["T1110"],
+            ["Block IP", "Force password reset for targeted account"],
+        )
 
     def rule_17_container_exec_after_exploit(self, new_event: dict, buffer: list):
         """Rule 17: Detect container exec after API exploit on same entity.
@@ -1460,21 +1596,6 @@ class CorrelationEngine:
                     except Exception:
                         continue
         return None
-        if new_event.get("event_type") not in ("brute_force", "credential_stuffing"):
-            return None
-        source_ip = new_event.get("source_entity", {}).get("ip")
-        if not source_ip or self._check_cooldown("brute_force_attempt", source_ip):
-            return None
-        self._set_cooldown("brute_force_attempt", source_ip)
-        return self.create_incident(
-            "brute_force_attempt",
-            "🔐 Brute Force / Stuffing Attempt",
-            f"Source {source_ip} performing {new_event['event_type']}.",
-            "medium", 0.80, source_ip,
-            [new_event], ["auth"],
-            ["T1110"],
-            ["Block IP", "Force password reset for targeted account"],
-        )
 
     def rule_critical_exploit_attempt(self, new_event: dict, buffer: list):
         if (
@@ -1482,21 +1603,22 @@ class CorrelationEngine:
             and new_event.get("event_type") not in ("sql_injection", "xss", "path_traversal")
         ):
             return None
+        actor_key = self._actor_key(new_event)
         source_ip = new_event.get("source_entity", {}).get("ip")
-        if not source_ip or self._check_cooldown("critical_exploit", source_ip):
+        if not actor_key or self._check_cooldown("critical_exploit", actor_key):
             return None
+        actor_events = self._actor_events(buffer, new_event)
         same_type = [
-            e for e in buffer
-            if e.get("source_entity", {}).get("ip") == source_ip
-            and e.get("event_type") == new_event.get("event_type")
+            e for e in actor_events
+            if e.get("event_type") == new_event.get("event_type")
         ]
         if len(same_type) < 2:
             return None
-        self._set_cooldown("critical_exploit", source_ip)
+        self._set_cooldown("critical_exploit", actor_key)
         return self.create_incident(
             "critical_exploit_attempt",
             "🛡️ Critical Exploit Attempt",
-            f"Source {source_ip} performing {new_event['event_type']} ({len(same_type)} times).",
+            f"Actor {actor_key} performing {new_event['event_type']} ({len(same_type)} times).",
             "high", 0.90, source_ip,
             same_type, ["api"],
             ["T1190", "T1068"],
@@ -1831,6 +1953,7 @@ class CorrelationEngine:
 
         # Enrich with topology metadata before correlation
         event = enrich_event(event)
+        event = normalize_event(event)
 
         # Threat-intel tag — surfaces in the dashboard and is keyable from
         # YAML rules (``threat_intel_match: true``).
@@ -1862,16 +1985,13 @@ class CorrelationEngine:
             event["source_entity"] = {"ip": event.get("source_ip", "unknown")}
 
         source_ip = event.get("source_entity", {}).get("ip")
+        corr_key = event.get("correlation_key") or resolve_correlation_key(event)
 
-        # Add to rolling buffer, prune stale entries
+        # Add to partitioned buffer, prune stale entries
         with self.buffer_lock:
-            self.event_buffer.append(event)
-            cutoff = datetime.now() - timedelta(seconds=CORRELATION_WINDOW)
-            self.event_buffer = [
-                e for e in self.event_buffer
-                if datetime.fromisoformat(e["timestamp"].replace("Z", "")) > cutoff
-            ]
-            buffer_copy = list(self.event_buffer)
+            self.event_buffers[corr_key].append(event)
+            self._prune_buffers()
+            buffer_copy = list(self.event_buffers.get(corr_key, []))
 
         service_name = event.get("source_service_name")
         service_key = service_name or source_ip
@@ -1881,7 +2001,10 @@ class CorrelationEngine:
 
         for rule in self.rules:
             try:
-                incident = rule(event, buffer_copy)
+                buf = buffer_copy
+                if rule.__name__ == "rule_distributed_attack":
+                    buf = self._merged_buffer()
+                incident = rule(event, buf)
                 if incident:
                     self.publish_incident(incident)
             except Exception as exc:

@@ -131,7 +131,12 @@ function CampaignCard({ campaign, onSelect }) {
               <Badge variant="resolved">CLOSED</Badge>
             )}
             <span className="font-mono text-xs text-base-400 tabular-nums">
-              {campaign.actor_id}
+              <span className="font-mono">{campaign.actor_id}</span>
+              {campaign.actor_type && (
+                <Badge variant="info" className="ml-2 text-2xs">
+                  {campaign.actor_type}
+                </Badge>
+              )}
             </span>
           </div>
           <div className="mt-2 flex items-center gap-2 text-base-100 font-semibold">
@@ -204,7 +209,12 @@ function CampaignDrawer({ campaign, onClose }) {
           <div className="flex items-center gap-2 min-w-0">
             <SeverityChip sev={sev} />
             <span className="font-mono text-sm text-base-200 truncate">
-              {campaign.actor_id}
+              <span className="font-mono">{campaign.actor_id}</span>
+              {campaign.actor_type && (
+                <Badge variant="info" className="ml-2 text-2xs">
+                  {campaign.actor_type}
+                </Badge>
+              )}
             </span>
           </div>
           <Button variant="icon" size="icon" onClick={onClose} aria-label="Close">

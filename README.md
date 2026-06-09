@@ -129,6 +129,8 @@ Notes:
 
 ## Architecture
 
+Full service-centric blueprint: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (see also [`docs/ARCHITECTURE_MAP.md`](docs/ARCHITECTURE_MAP.md)).
+
 ```mermaid
 graph TD
     User((User/Attacker)) --> WebApp["ShopSphere Web App :8080"]

@@ -24,6 +24,11 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from flask import Flask, jsonify
 
+try:
+    from shared.event_schema import normalize_event
+except ImportError:
+    from event_schema import normalize_event  # type: ignore
+
 # ── Structured logging ──────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -215,6 +220,7 @@ class APIMonitor:
 
         if self.redis_available:
             try:
+                event = normalize_event(event)
                 js = json.dumps(event)
                 self.redis_client.publish("security_events", js)
                 self.redis_client.lpush("events:api", js)

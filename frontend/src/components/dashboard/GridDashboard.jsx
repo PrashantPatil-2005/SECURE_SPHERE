@@ -6,7 +6,7 @@ import ChartCard from './ChartCard';
 import IncidentList from './IncidentList';
 import KPIBar from './KPIBar';
 import LiveFeed from './LiveFeed';
-import MITREPanel from './MITREPanel';
+import MitrePanel from '@/components/charts/MitrePanel';
 import RiskHeatmap from './RiskHeatmap';
 import ServiceTopologyCard from './ServiceTopologyCard';
 
@@ -67,7 +67,7 @@ export default function GridDashboard({
         height={360}
       />
 
-      <MITREPanel />
+      <MitrePanel />
     </div>
   );
 }

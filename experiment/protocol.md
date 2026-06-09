@@ -5,6 +5,13 @@ Measure Mean Time To Detect (MTTD) reduction when using SecuriSphere correlation
 
 Target: ≥70% MTTD reduction with dashboard.
 
+### Automated churn trial (C1)
+- Scenario: `benchmarks/scenarios/recon_to_exfil_with_redeploy.yaml`
+- Mid-attack: restart `auth-service` container (simulated via IP change + stable `source_service_name`)
+- Metric: kill-chain completeness ≥ 90% (service-centric correlation)
+- Runner: `python scripts/churn_experiment.py` or `python backend/evaluation/run_evaluation.py --churn`
+- Compare `CORRELATION_MODE=service` vs `legacy` for paper Table C1
+
 ---
 
 ## Definitions

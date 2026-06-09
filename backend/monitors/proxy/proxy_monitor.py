@@ -15,6 +15,12 @@ import logging
 import redis
 from datetime import datetime
 
+try:
+    from shared.event_schema import normalize_event
+except ImportError:
+    def normalize_event(e):
+        return e
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("ProxyMonitor")
 
@@ -101,6 +107,8 @@ def build_event(raw: dict) -> dict:
         },
         "correlation_tags": ["waf", rule] + (["blocked"] if blocked else []),
         "mitre_technique":  MITRE_BY_RULE.get(rule),
+        "source_service_name": None,
+        "destination_service_name": "web-app",
     }
 
 
@@ -120,7 +128,7 @@ def run():
             except Exception:
                 continue
 
-            evt = build_event(raw)
+            evt = normalize_event(build_event(raw))
 
             # Publish on pub/sub + store in dedicated list
             r.publish("security_events", json.dumps(evt))

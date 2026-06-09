@@ -31,6 +31,7 @@ from auth import auth_bp, token_required, role_required
 from topology_checks import bp as topology_checks_bp
 from ai_endpoints import bp as ai_bp
 from engine_proxy import engine_proxy_bp
+from bff_proxy import bp as bff_proxy_bp
 from attack_simulator import SimulatorRuntime, detect_target_services_unreachable
 try:
     from audit import log_audit, query_audit
@@ -131,6 +132,7 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(topology_checks_bp)
 app.register_blueprint(ai_bp)
 app.register_blueprint(engine_proxy_bp)
+app.register_blueprint(bff_proxy_bp)
 
 # Rate-limit login route after blueprint registration
 try:
@@ -270,6 +272,9 @@ def calculate_metrics():
         "incidents_per_hour": 0.0,
         "avg_mttd_seconds": None,
         "detection_rate": 100.0,
+        "active_campaigns": 0,
+        "campaign_dedup_ratio": 0.0,
+        "churn_scenario_completeness": None,
     }
 
     if not redis_available: return metrics
@@ -320,6 +325,35 @@ def calculate_metrics():
         avg_mttd = _avg_mttd_from_postgres()
         if avg_mttd is not None:
             metrics["avg_mttd_seconds"] = avg_mttd
+
+        # Campaign-level alert reduction (incidents collapsed into campaigns)
+        try:
+            import psycopg2
+            pg_url = os.getenv("DATABASE_URL")
+            if pg_url:
+                conn = psycopg2.connect(pg_url)
+            else:
+                conn = psycopg2.connect(
+                    host=os.getenv("POSTGRES_HOST", "database"),
+                    port=int(os.getenv("POSTGRES_PORT", 5432)),
+                    dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
+                    user=os.getenv("POSTGRES_USER", "securisphere_user"),
+                    password=os.getenv("POSTGRES_PASSWORD", ""),
+                )
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM campaigns WHERE status = 'active'")
+                    active_camps = int(cur.fetchone()[0])
+                    cur.execute("SELECT COALESCE(SUM(incident_count), 0) FROM campaigns")
+                    camp_incidents = int(cur.fetchone()[0])
+            conn.close()
+            metrics["active_campaigns"] = active_camps
+            if camp_incidents > 0 and total_inc > 0:
+                metrics["campaign_dedup_ratio"] = round(
+                    (1 - active_camps / max(total_inc, 1)) * 100, 1
+                )
+        except Exception:
+            pass
 
     except Exception as e:
         logger.error(f"Error calculating metrics: {e}")
@@ -1043,7 +1077,10 @@ def redis_subscriber():
         try:
             r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
             pubsub = r.pubsub()
-            pubsub.subscribe("security_events", "correlated_incidents", "risk_scores", "correlation_summary")
+            pubsub.subscribe(
+                "security_events", "correlated_incidents", "risk_scores",
+                "correlation_summary", "campaign_escalated",
+            )
             
             logger.info("[WS] Subscribed to Redis channels")
             
@@ -1060,6 +1097,8 @@ def redis_subscriber():
                         socketio.emit('risk_update', data)
                     elif channel == "correlation_summary":
                         socketio.emit('summary_update', data)
+                    elif channel == "campaign_escalated":
+                        socketio.emit('campaign_escalated', data)
                         
         except Exception as e:
             logger.error(f"[WS] Redis subscriber error: {e}")
@@ -1929,7 +1968,6 @@ def _load_evaluation_report():
 
     here = os.path.dirname(__file__)
     csv_dirs = [
-        os.path.abspath(os.path.join(here, "..", "evaluation", "results")),
         os.path.abspath(os.path.join(here, "..", "..", "evaluation", "results")),
         os.path.join(os.getcwd(), "evaluation", "results"),
     ]

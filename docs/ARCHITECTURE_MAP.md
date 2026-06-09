@@ -69,7 +69,7 @@ target services → monitors (regex/heuristic) → redis PUBLISH security_events
 |---|---|---|
 | "Polling every 5s" | Engine is pub/sub; no polling. Single-threaded though — bottleneck under load. | Migrate to Redis Streams + consumer groups for replay/parallelism. |
 | "Topology collector incomplete (Phase 12)" | **Phase 12 complete (2026-05-01).** `_pg_conn` / `_get_conn` confirmed plain `os.getenv` — nested-ternary noise gone. Observed-edge inference active: `record_observed_edge` + 5-min TTL prune merged into collector loop, exposed via idempotent `POST /topology/edge`. Threat-level on graph nodes now sourced from `risk_scores_by_service` (service-name keyed) — survives container IP churn. Drift detector publishes each event onto `security_events` (`source_layer=topology`, MITRE T1525) so the correlation engine treats supply-chain drift as first-class. | — |
-| "FastAPI backend" | Backend is Flask; only topology-collector is FastAPI. | Document; keep Flask (consumed by tests + frontend). |
+| "FastAPI backend" | Phased: Flask gateway (:8000) + FastAPI BFF (:8001) + ingestion (:5010); topology-collector FastAPI (:5080). | See `docs/ARCHITECTURE.md`, `docs/API_DESIGN.md`. |
 | "MTTD experiment data incomplete" | `evaluation/results/` has 9 trials from 2026-02-15. No automated baseline-vs-securisphere bench. | Add `/benchmarks` with reproducible MTTD diff. |
 | "No ML/AI layer" | True. Only HF narrator (post-hoc text). | Add Isolation Forest behavioural fingerprint + TGNN scaffold + Bayesian confidence. |
 | "No predictive lateral movement" | True. | Scaffold TGNN next-pivot predictor. |

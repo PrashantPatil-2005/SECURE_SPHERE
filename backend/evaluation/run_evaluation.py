@@ -633,7 +633,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='SecuriSphere Evaluation Runner')
     parser.add_argument('--mode', choices=['full', 'named'], default='full',
                         help='full = original 5 scenarios; named = new A/B/C scenarios')
+    parser.add_argument('--churn', action='store_true',
+                        help='Run C1 churn resilience check (recon_to_exfil_with_redeploy)')
     args = parser.parse_args()
+
+    if args.churn:
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        script = os.path.join(root, 'scripts', 'churn_experiment.py')
+        import subprocess
+        rc = subprocess.call([sys.executable, script], cwd=root)
+        sys.exit(rc)
 
     evaluator = SecuriSphereEvaluator()
     if args.mode == 'named':

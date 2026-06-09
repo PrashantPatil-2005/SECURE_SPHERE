@@ -7,6 +7,12 @@ import math
 import statistics
 import redis
 from datetime import datetime, timedelta
+
+try:
+    from shared.event_schema import normalize_event
+except ImportError:
+    def normalize_event(e):
+        return e
 from collections import defaultdict
 from scapy.all import sniff, IP, TCP, UDP, DNS, DNSQR
 
@@ -132,7 +138,9 @@ class NetworkMonitor:
                 "evidence": evidence
             },
             "correlation_tags": tags,
-            "mitre_technique": mitre
+            "mitre_technique": mitre,
+            "source_service_name": None,
+            "destination_service_name": "api-server",
         }
         return event
 
@@ -149,6 +157,7 @@ class NetworkMonitor:
             return
 
         try:
+            event = normalize_event(event)
             # 1. Publish to Pub/Sub channel
             self.redis_client.publish('security_events', json.dumps(event))
             

@@ -10,14 +10,14 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Install dependencies
-COPY requirements.txt .
+COPY network/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create logging directory
 RUN mkdir -p /var/log/securisphere
 
-# Copy application files
-COPY . .
+COPY shared/ /app/shared/
+COPY network/ /app/
 
 # Initialize unbuffered output
 CMD ["python", "-u", "network_monitor.py"]

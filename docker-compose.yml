@@ -117,8 +117,8 @@ services:
 
   network-monitor:
     build:
-      context: ./backend/monitors/network
-      dockerfile: Dockerfile
+      context: ./backend/monitors
+      dockerfile: network/Dockerfile
     container_name: securisphere-netmon
     cap_add:
       - NET_RAW
@@ -142,8 +142,8 @@ services:
 
   api-monitor:
     build:
-      context: ./backend/monitors/api
-      dockerfile: Dockerfile
+      context: ./backend/monitors
+      dockerfile: api/Dockerfile
     container_name: securisphere-apimon
     ports:
       - "5050:5050"
@@ -177,8 +177,8 @@ services:
 
   auth-monitor:
     build:
-      context: ./backend/monitors/auth
-      dockerfile: Dockerfile
+      context: ./backend/monitors
+      dockerfile: auth/Dockerfile
     container_name: securisphere-authmon
     ports:
       - "5060:5060"
@@ -236,9 +236,10 @@ services:
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
       HF_API_TOKEN: ${HF_API_TOKEN:-}
       HF_MODEL: ${HF_MODEL:-Qwen/Qwen2.5-72B-Instruct}
+      BFF_URL: http://bff:8001
       SECURISPHERE_API_URL: http://api-server:5000
       SECURISPHERE_AUTH_URL: http://auth-service:5001
       SECURISPHERE_BACKEND_URL: http://localhost:8000
@@ -259,6 +260,8 @@ services:
         condition: service_healthy
       topology-collector:
         condition: service_healthy
+      bff:
+        condition: service_started
     volumes:
       - waf-config:/etc/waf/conf.d
     networks:
@@ -312,15 +315,18 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
       CORRELATION_WINDOW: ${CORRELATION_WINDOW:-900}
+      EVENT_BUS_MODE: ${EVENT_BUS_MODE:-streams}
+      CORRELATION_MODE: ${CORRELATION_MODE:-service}
       RISK_DECAY_RATE: ${RISK_DECAY_RATE:-5}
       RISK_DECAY_INTERVAL: ${RISK_DECAY_INTERVAL:-60}
+      CAMPAIGN_ALERT_THRESHOLD: ${CAMPAIGN_ALERT_THRESHOLD:-0.75}
       POSTGRES_HOST: database
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
       POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
       HF_API_TOKEN: ${HF_API_TOKEN:-}
       HF_MODEL: ${HF_MODEL:-Qwen/Qwen2.5-72B-Instruct}
     depends_on:
@@ -450,8 +456,8 @@ services:
 
   proxy-monitor:
     build:
-      context: ./backend/monitors/proxy
-      dockerfile: Dockerfile
+      context: ./backend/monitors
+      dockerfile: proxy/Dockerfile
     container_name: securisphere-proxymon
     environment:
       REDIS_HOST: redis
@@ -472,8 +478,8 @@ services:
 
   browser-monitor:
     build:
-      context: ./backend/monitors/browser
-      dockerfile: Dockerfile
+      context: ./backend/monitors
+      dockerfile: browser/Dockerfile
     container_name: securisphere-browsermon
     ports:
       - "5090:5090"
@@ -507,6 +513,102 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  ingestion:
+    build:
+      context: ./backend
+      dockerfile: ingestion/Dockerfile
+    container_name: securisphere-ingestion
+    ports:
+      - "5010:5010"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      EVENT_STREAM: securisphere:events
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    restart: unless-stopped
+
+  bff:
+    build:
+      context: ./backend
+      dockerfile: bff/Dockerfile
+    container_name: securisphere-bff
+    ports:
+      - "8001:8001"
+    environment:
+      REDIS_HOST: redis
+      POSTGRES_HOST: database
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-securisphere_db}
+      POSTGRES_USER: ${POSTGRES_USER:-securisphere_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    networks:
+      - securisphere-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  agent-manager:
+    build:
+      context: ./backend/agents
+      dockerfile: manager/Dockerfile
+    container_name: securisphere-agent-mgr
+    ports:
+      - "8514:8514"
+    environment:
+      INGESTION_URL: http://ingestion:5010
+    depends_on:
+      - ingestion
+    networks:
+      - securisphere-network
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: securisphere-es
+    profiles: ["search"]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    networks:
+      - securisphere-network
+    restart: unless-stopped
+
+  search-indexer:
+    build:
+      context: ./backend
+      dockerfile: search/Dockerfile
+    container_name: securisphere-search-indexer
+    profiles: ["search"]
+    environment:
+      REDIS_HOST: redis
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      EVENT_STREAM: securisphere:events
+    depends_on:
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
+    networks:
+      - securisphere-network
+    restart: unless-stopped
 
 networks:
   securisphere-network:

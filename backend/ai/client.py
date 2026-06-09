@@ -4,7 +4,7 @@ import os
 logger = logging.getLogger("AIClient")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 HF_MODEL = os.getenv("HF_MODEL", "Qwen/Qwen2.5-72B-Instruct")
 HF_TIMEOUT = int(os.getenv("HF_TIMEOUT", "60"))
 

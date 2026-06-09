@@ -510,6 +510,54 @@ function LoadingSkeleton() {
 // Main page
 // ---------------------------------------------------------------------------
 
+const TACTIC_TIMELINE_ORDER = [
+  'Reconnaissance', 'Initial Access', 'Execution', 'Persistence',
+  'Privilege Escalation', 'Defense Evasion', 'Credential Access', 'Discovery',
+  'Lateral Movement', 'Collection', 'Command and Control', 'Exfiltration', 'Impact',
+];
+
+function MitreTimeline({ techniques = [] }) {
+  const byTactic = useMemo(() => {
+    const m = {};
+    for (const t of techniques) {
+      const tac = t.tactic || 'Unknown';
+      m[tac] = (m[tac] || 0) + (t.hit_count || t.count || 0);
+    }
+    return m;
+  }, [techniques]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">MITRE tactic timeline</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-end gap-1 overflow-x-auto pb-1">
+          {TACTIC_TIMELINE_ORDER.map((tactic) => {
+            const hits = byTactic[tactic] || 0;
+            const h = Math.max(8, Math.min(48, hits * 6));
+            return (
+              <div key={tactic} className="flex flex-col items-center gap-1 min-w-[72px] shrink-0">
+                <div
+                  className="w-full rounded-t bg-accent/40 border border-accent/30"
+                  style={{ height: `${h}px` }}
+                  title={`${tactic}: ${hits} hits`}
+                />
+                <span className="text-2xs text-center text-base-500 leading-tight font-mono tabular-nums">
+                  {hits}
+                </span>
+                <span className="text-[9px] text-center text-base-600 leading-tight px-0.5">
+                  {tactic.split(' ')[0]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Mitre() {
   const [data, setData] = useState(null);
   const [coverage, setCoverage] = useState(null);
@@ -588,6 +636,8 @@ export default function Mitre() {
 
       {/* Summary */}
       <SummaryBar data={data} />
+
+      <MitreTimeline techniques={techniques} />
 
       {/* Coverage heatmap */}
       <Card>

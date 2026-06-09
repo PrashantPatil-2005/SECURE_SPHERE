@@ -20,7 +20,7 @@ that should be reconstructed.
 | Scenario | C-claim | Description |
 |---|---|---|
 | `recon_to_exfil_stable.yaml`         | baseline | No churn; full kill chain |
-| `recon_to_exfil_with_redeploy.yaml`  | C1       | Same chain; restart auth-service mid-attack |
+| `recon_to_exfil_with_redeploy.yaml`  | C1       | Same chain; restart auth-service mid-attack (implemented) |
 | `multi_layer_browser_to_db.yaml`     | C2       | Browser-layer SQLi + network-layer DB exfil |
 | `silent_replace_payment.yaml`        | C3       | Replace `payment-service` image with same name |
 

@@ -6,14 +6,14 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Install dependencies
-COPY requirements.txt .
+COPY auth/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create logs directory
 RUN mkdir -p /var/log/securisphere
 
-# Copy application files
-COPY . .
+COPY shared/ /app/shared/
+COPY auth/ /app/
 
 # Expose proxy port
 EXPOSE 5060

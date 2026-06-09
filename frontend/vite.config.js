@@ -17,7 +17,7 @@ export default defineConfig({
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('error', () => {
-            // Backend offline — frontend already handles via mock-data
+            // Backend offline — API errors surface in UI; no mock fallback
             // fallback. Swallow ECONNREFUSED so the dev console isn't
             // drowned in proxy stack traces.
           });

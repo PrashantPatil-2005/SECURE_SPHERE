@@ -5,8 +5,11 @@ Analyze the following incident data and provide a comprehensive, high-fidelity t
 The output must be a single, valid JSON object exactly matching the schema below.
 DO NOT wrap the output in markdown code blocks. OUTPUT ONLY JSON.
 
-Context:
+Context (include service_path and correlation_key when present):
 {context}
+
+Service-centric note: correlate events by Docker service identity (source_service_name,
+destination_service_name), not transient container IPs. Explain traversal along service_path.
 
 Required JSON Schema:
 {{

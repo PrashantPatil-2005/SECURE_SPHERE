@@ -1,0 +1,57 @@
+name: recon_to_exfil_with_redeploy
+description: C1 churn — restart auth-service mid-attack; service identity preserves chain
+claim: C1
+settle_timeout: 15
+expected_chain: [reconnaissance, exploitation, lateral_movement, exfiltration]
+churn:
+  - action: restart_service
+    service: auth-service
+    after_event: 2
+events:
+  - event_type: port_scan
+    severity: low
+    source_layer: network
+    source_service_name: attacker-pod
+    destination_service_name: api-server
+    source_entity: { ip: 10.0.0.99 }
+    delay_after: 1.0
+
+  - event_type: sql_injection_attempt
+    severity: high
+    source_layer: api
+    source_service_name: attacker-pod
+    destination_service_name: api-server
+    source_entity: { ip: 10.0.0.99 }
+    delay_after: 1.0
+
+  - event_type: brute_force
+    severity: high
+    source_layer: auth
+    source_service_name: attacker-pod
+    destination_service_name: auth-service
+    source_entity: { ip: 10.0.0.55 }
+    delay_after: 0.5
+
+  - event_type: suspicious_login
+    severity: critical
+    source_layer: auth
+    source_service_name: attacker-pod
+    destination_service_name: auth-service
+    source_entity: { ip: 10.0.0.55 }
+    delay_after: 1.0
+
+  - event_type: lateral_movement
+    severity: high
+    source_layer: network
+    source_service_name: attacker-pod
+    destination_service_name: database
+    source_entity: { ip: 10.0.0.55 }
+    delay_after: 1.0
+
+  - event_type: data_exfiltration
+    severity: critical
+    source_layer: network
+    source_service_name: attacker-pod
+    destination_service_name: external
+    source_entity: { ip: 10.0.0.55 }
+    delay_after: 0.5

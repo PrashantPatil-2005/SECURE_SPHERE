@@ -167,6 +167,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
   // Prefer rich step array from drill-down, then inline steps/service_path.
   const richSteps = detail?.steps || (Array.isArray(inc.steps) ? inc.steps : null);
   const servicePath = inc.service_path || detail?.service_path || [];
+  const killChainGraph = inc.graph || detail?.graph || null;
   const firstService = inc.first_service || detail?.first_service;
   const lastService = inc.last_service || detail?.last_service;
   const firstEventAt = inc.first_event_at || detail?.first_event_at;
@@ -281,6 +282,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
               steps={richSteps || inc.kill_chain_steps || 0}
               servicePath={servicePath}
               mitreTechniques={inc.mitre_techniques || []}
+              graph={killChainGraph}
               compact={!expanded}
             />
           )}

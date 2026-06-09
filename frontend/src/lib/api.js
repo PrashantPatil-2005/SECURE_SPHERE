@@ -71,7 +71,7 @@ export const api = {
   getMetrics: () => request('/api/metrics'),
   getRiskScores: () => request('/api/risk-scores'),
   getRiskAccounts: () => request('/api/v2/risk/accounts'),
-  getEvaluationResults: () => request('/api/v2/evaluation/results'),
+  getEvaluationResults: () => request('/api/evaluation/results'),
   getTopology: () =>
     request('/api/topology')
       .catch(() => request('/topology/graph'))

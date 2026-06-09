@@ -1,5 +1,6 @@
 import { ChevronRight, Server, Shield } from 'lucide-react';
 import { cn, severityColor, layerColor, safeString, formatTimestamp } from '@/lib/utils';
+import KillChainGraph from '@/components/KillChainGraph';
 
 /**
  * Renders a kill-chain as a horizontal step flow.
@@ -15,6 +16,7 @@ export default function KillChainTimeline({
   steps = [],
   servicePath = [],
   mitreTechniques = [],
+  graph = null,
   compact = false,
 }) {
   const isRichSteps = Array.isArray(steps) && steps.length > 0 && typeof steps[0] === 'object';
@@ -49,6 +51,8 @@ export default function KillChainTimeline({
   }
 
   return (
+    <div className="space-y-3">
+      {graph?.nodes?.length > 0 && <KillChainGraph graph={graph} />}
     <div className="flex items-stretch gap-1 overflow-x-auto py-2 px-1">
       {nodes.map((node, i) => {
         const isFirst = i === 0;
@@ -129,6 +133,7 @@ export default function KillChainTimeline({
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

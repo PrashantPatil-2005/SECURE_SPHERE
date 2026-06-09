@@ -56,6 +56,7 @@ import redis
 logger = logging.getLogger("CampaignAggregator")
 
 CAMPAIGN_IDLE_TIMEOUT = int(os.getenv("CAMPAIGN_IDLE_TIMEOUT", 1800))   # 30 min
+CAMPAIGN_ALERT_THRESHOLD = float(os.getenv("CAMPAIGN_ALERT_THRESHOLD", "0.75"))
 CAMPAIGN_REDIS_PREFIX = "campaign:active:"
 CAMPAIGN_INDEX_KEY    = "campaign:active:index"
 
@@ -112,7 +113,15 @@ class CampaignAggregator:
     # Public entry point
     # ------------------------------------------------------------------
 
+    def create_or_update_campaign(self, incident: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+        """Create or merge incident into campaign (spec API)."""
+        return self._create_or_update(incident)
+
     def ingest(self, incident: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+        """Legacy alias for create_or_update_campaign."""
+        return self.create_or_update_campaign(incident)
+
+    def _create_or_update(self, incident: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
         """Attach incident to matching campaign or create new one.
 
         Returns (campaign, change_kind) where change_kind is:
@@ -160,14 +169,32 @@ class CampaignAggregator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _actor_id(incident: Dict[str, Any]) -> Optional[str]:
+    def resolve_actor(incident: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+        """Return (actor_id, actor_type) — service-first identity."""
+        svc = incident.get("source_service_name")
+        if svc:
+            return (f"service:{svc}", "service")
+        wl = incident.get("workload_id")
+        if wl:
+            return (f"workload:{wl}", "workload")
         ip = incident.get("source_ip")
         if ip and ip not in ("0.0.0.0", "127.0.0.1", "?", "", "unknown"):
-            return f"ip:{ip}"
+            return (f"ip:{ip}", "ip")
         user = incident.get("target_username")
         if user:
-            return f"user:{user}"
-        return None
+            return (f"user:{user}", "user")
+        ck = incident.get("correlation_key")
+        if ck and ck != "unknown":
+            return (ck, "correlation")
+        return (None, None)
+
+    @staticmethod
+    def _actor_id(incident: Dict[str, Any]) -> Optional[str]:
+        actor_id, _ = CampaignAggregator.resolve_actor(incident)
+        return actor_id
+
+    def should_alert(self, campaign: Dict[str, Any]) -> bool:
+        return float(campaign.get("max_confidence") or 0) >= CAMPAIGN_ALERT_THRESHOLD
 
     # ------------------------------------------------------------------
     # Create / merge
@@ -176,9 +203,12 @@ class CampaignAggregator:
     def _create(self, actor_id: str, incident: Dict[str, Any]) -> Dict[str, Any]:
         now = _utcnow()
         first_evt = _parse_iso(incident.get("first_event_at")) or now
+        _, actor_type = self.resolve_actor(incident)
         return {
             "campaign_id":       str(uuid4()),
             "actor_id":          actor_id,
+            "actor_type":        actor_type or "ip",
+            "source_service_name": incident.get("source_service_name"),
             "source_ip":         incident.get("source_ip"),
             "target_usernames":  [incident["target_username"]] if incident.get("target_username") else [],
             "incident_ids":      [incident["incident_id"]],

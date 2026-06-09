@@ -106,6 +106,12 @@ def site_is_registered(site_id: str) -> bool:
         return False
 
 
+try:
+    from shared.event_schema import normalize_event
+except ImportError:
+    def normalize_event(e):
+        return e
+
 # ── enrichment ─────────────────────────────────────────────────────────────
 
 def enrich(ev: dict, source_ip: str) -> dict:
@@ -115,18 +121,20 @@ def enrich(ev: dict, source_ip: str) -> dict:
     ``publisher`` + ``published`` bookkeeping fields. The ``source_layer``
     stays as ``browser-agent`` so the correlation engine can key on it.
     """
-    return {
+    event = {
         **ev,
         "event_id":                 str(uuid.uuid4()),
         "trace_id":                 ev.get("trace_id") or str(uuid.uuid4()),
         "timestamp":                ev.get("timestamp") or datetime.utcnow().isoformat() + "Z",
         "source_monitor":           "browser-monitor",
         "source_ip":                source_ip,
+        "source_entity":            {"ip": source_ip},
         "target_service":           "web-app",
         "destination_service_name": "web-app",
         "publisher":                "events-api",
         "published":                True,
     }
+    return normalize_event(event)
 
 
 # ── Flask app ──────────────────────────────────────────────────────────────

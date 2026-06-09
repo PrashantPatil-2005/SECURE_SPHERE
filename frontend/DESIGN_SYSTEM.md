@@ -91,7 +91,6 @@ components/
 ├── events/       # Events-page blocks
 ├── incidents/    # Incidents-page blocks
 ├── topology/     # Topology-page blocks (beside TopologyGraph.jsx at the root)
-├── intro/        # Intro / landing blocks
 ├── design/       # design-system surface snippets used inside the app
 ├── KillChainTimeline.jsx
 ├── TopologyGraph.jsx
@@ -243,7 +242,6 @@ frontend/src/
 ├── pages/                 # one file per top-level route
 │   ├── Login.jsx
 │   ├── Attacker.jsx       # standalone red-team view (no auth shell)
-│   ├── Intro.jsx
 │   ├── Dashboard.jsx
 │   ├── Events.jsx
 │   ├── Incidents.jsx
@@ -259,7 +257,7 @@ frontend/src/
 │   ├── shell/             # AuthenticatedApp (router + nav-shell switcher), TweaksPanel
 │   ├── charts/            # Recharts wrappers with site-styled tooltips
 │   ├── dashboard/         # Dashboard-mode feature blocks (Triage / Grid / Story)
-│   ├── events/ incidents/ topology/ intro/ design/
+│   ├── events/ incidents/ topology/ design/
 │   ├── KillChainTimeline.jsx
 │   ├── TopologyGraph.jsx
 │   ├── TopologyChecklist.jsx
@@ -280,7 +278,6 @@ frontend/src/
 └── lib/
     ├── api.js             # HTTP client for /api/*
     ├── websocket.js       # socket.io client
-    ├── mock-data.js       # fallback demo data when backend is down
     ├── themeDom.js        # applyThemeToDocument, hydrateDocumentThemeFromStorage
     └── utils.js           # cn(), safeString, severity/threat/layer helpers, time formatters
 ```

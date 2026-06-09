@@ -48,6 +48,8 @@ export default function AlertReductionCard({ metrics = {}, className = '' }) {
   const totalRaw     = Number(metrics.total_raw_events ?? metrics.raw_events?.total ?? 0);
   const totalInc     = Number(metrics.total_incidents ?? metrics.correlated_incidents ?? 0);
   const ratio        = Number(metrics.alert_reduction_ratio ?? metrics.alert_reduction_percentage ?? 0);
+  const activeCamps  = Number(metrics.active_campaigns ?? 0);
+  const campDedup    = Number(metrics.campaign_dedup_ratio ?? 0);
   const avgMttd      = metrics.avg_mttd_seconds;
   const eventsPerMin = Number(metrics.events_per_minute ?? 0);
 
@@ -109,18 +111,21 @@ export default function AlertReductionCard({ metrics = {}, className = '' }) {
         <div className="flex items-center gap-1.5">
           <Activity className="h-3 w-3 text-base-500" />
           <div className="flex flex-col">
-            <span className="text-[9px] uppercase tracking-wider text-base-500">Avg MTTD</span>
+            <span className="text-[9px] uppercase tracking-wider text-base-500">Active campaigns</span>
             <span className="text-xs font-mono font-semibold text-base-200 tabular-nums">
-              {avgMttd != null ? `${Number(avgMttd).toFixed(2)}s` : '—'}
+              {fmtInt(activeCamps)}
+              {campDedup > 0 && (
+                <span className="text-base-500 font-normal"> · {campDedup.toFixed(0)}% dedup</span>
+              )}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
           <Activity className="h-3 w-3 text-base-500" />
           <div className="flex flex-col">
-            <span className="text-[9px] uppercase tracking-wider text-base-500">Events/min</span>
+            <span className="text-[9px] uppercase tracking-wider text-base-500">Avg MTTD</span>
             <span className="text-xs font-mono font-semibold text-base-200 tabular-nums">
-              {eventsPerMin.toFixed(1)}
+              {avgMttd != null ? `${Number(avgMttd).toFixed(2)}s` : '—'}
             </span>
           </div>
         </div>

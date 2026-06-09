@@ -211,6 +211,19 @@ def reconstruct(
     enriched["last_service"]     = service_path[-1] if service_path else None
     enriched["trace_ids"]        = trace_ids
 
+    # Graph structure for D3 visualization
+    nodes = [{"id": s, "label": s} for s in service_path]
+    edges = [
+        {"source": service_path[i], "target": service_path[i + 1]}
+        for i in range(len(service_path) - 1)
+    ]
+    enriched["graph"] = {"nodes": nodes, "edges": edges}
+    enriched["correlation_key"] = incident.get("correlation_key")
+    enriched["source_service_name"] = (
+        incident.get("source_service_name")
+        or (service_path[0] if service_path else None)
+    )
+
     return enriched
 
 
@@ -240,17 +253,31 @@ def persist(enriched_incident: Dict[str, Any]) -> None:
                     "ADD COLUMN IF NOT EXISTS trace_ids TEXT[] NOT NULL DEFAULT '{}'"
                 )
                 cur.execute(
+                    "ALTER TABLE kill_chains "
+                    "ADD COLUMN IF NOT EXISTS graph JSONB NOT NULL DEFAULT '{\"nodes\":[],\"edges\":[]}'"
+                )
+                cur.execute(
+                    "ALTER TABLE kill_chains "
+                    "ADD COLUMN IF NOT EXISTS correlation_key VARCHAR(200)"
+                )
+                cur.execute(
+                    "ALTER TABLE kill_chains "
+                    "ADD COLUMN IF NOT EXISTS source_service_name VARCHAR(100)"
+                )
+                cur.execute(
                     """
                     INSERT INTO kill_chains (
                         incident_id, incident_type, source_ip, target_username,
                         steps, service_path, first_service, last_service,
                         mitre_techniques, first_event_at, detected_at,
-                        duration_seconds, mttd_seconds, severity, trace_ids
+                        duration_seconds, mttd_seconds, severity, trace_ids,
+                        graph, correlation_key, source_service_name
                     ) VALUES (
                         %(incident_id)s, %(incident_type)s, %(source_ip)s, %(target_username)s,
                         %(steps)s, %(service_path)s, %(first_service)s, %(last_service)s,
                         %(mitre_techniques)s, %(first_event_at)s, %(detected_at)s,
-                        %(duration_seconds)s, %(mttd_seconds)s, %(severity)s, %(trace_ids)s
+                        %(duration_seconds)s, %(mttd_seconds)s, %(severity)s, %(trace_ids)s,
+                        %(graph)s, %(correlation_key)s, %(source_service_name)s
                     )
                     ON CONFLICT (incident_id) DO UPDATE SET
                         steps            = EXCLUDED.steps,
@@ -258,7 +285,10 @@ def persist(enriched_incident: Dict[str, Any]) -> None:
                         first_event_at   = EXCLUDED.first_event_at,
                         mttd_seconds     = EXCLUDED.mttd_seconds,
                         target_username  = COALESCE(EXCLUDED.target_username, kill_chains.target_username),
-                        trace_ids        = EXCLUDED.trace_ids
+                        trace_ids        = EXCLUDED.trace_ids,
+                        graph            = EXCLUDED.graph,
+                        correlation_key  = EXCLUDED.correlation_key,
+                        source_service_name = EXCLUDED.source_service_name
                     """,
                     {
                         "incident_id":      enriched_incident.get("incident_id"),
@@ -276,6 +306,9 @@ def persist(enriched_incident: Dict[str, Any]) -> None:
                         "mttd_seconds":     enriched_incident.get("mttd_seconds"),
                         "severity":         enriched_incident.get("severity"),
                         "trace_ids":        enriched_incident.get("trace_ids", []),
+                        "graph":            json.dumps(enriched_incident.get("graph", {"nodes": [], "edges": []})),
+                        "correlation_key":  enriched_incident.get("correlation_key"),
+                        "source_service_name": enriched_incident.get("source_service_name"),
                     },
                 )
         conn.close()

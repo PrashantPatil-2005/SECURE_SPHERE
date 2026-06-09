@@ -16,13 +16,17 @@ to merge static metadata with live Redis/engine hit counts.
 TACTIC_ORDER = [
     "Reconnaissance",
     "Initial Access",
+    "Execution",
+    "Persistence",
+    "Privilege Escalation",
+    "Defense Evasion",
     "Credential Access",
     "Discovery",
     "Lateral Movement",
-    "Privilege Escalation",
     "Collection",
     "Command and Control",
     "Exfiltration",
+    "Impact",
 ]
 
 
@@ -200,9 +204,10 @@ MITRE_MAP = {
             "Using valid accounts and network-reachable services (SSH, "
             "RDP, internal APIs) to move laterally between hosts."
         ),
-        "detected_by": ["network-monitor", "browser-agent"],
+        "detected_by": ["network-monitor", "browser-agent", "correlation-engine"],
         "correlation_rules": [
             "full_kill_chain",
+            "service_lateral_movement",
             "browser_multi_hop_lateral_movement",
         ],
         "scenarios": ["C"],
@@ -422,6 +427,30 @@ MITRE_MAP = {
             "Theoretical: tagged on topology_drift / behavior_anomaly "
             "correlations as a smell. No software-supply-chain detector."
         ),
+        "coverage": "theoretical",
+    },
+    "T1499": {
+        "technique_id": "T1499",
+        "technique_name": "Endpoint Denial of Service",
+        "tactic": "Impact",
+        "tactic_id": "TA0040",
+        "description": "Adversary floods or exhausts containerized service resources.",
+        "detected_by": ["network-monitor", "api-monitor"],
+        "correlation_rules": ["syn_flood", "rate_abuse"],
+        "scenarios": ["B"],
+        "container_context": "SYN flood / rate abuse against api-server or auth-service.",
+        "coverage": "partial",
+    },
+    "T1485": {
+        "technique_id": "T1485",
+        "technique_name": "Data Destruction",
+        "tactic": "Impact",
+        "tactic_id": "TA0040",
+        "description": "Adversary destroys data in container volumes or databases.",
+        "detected_by": ["api-monitor"],
+        "correlation_rules": ["data_exfiltration", "full_kill_chain"],
+        "scenarios": ["A", "C"],
+        "container_context": "Correlated with exfiltration chains targeting database services.",
         "coverage": "theoretical",
     },
 }
