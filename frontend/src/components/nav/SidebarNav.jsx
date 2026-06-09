@@ -7,12 +7,14 @@ import {
   Gauge,
   Shield,
   Server,
+  Users,
   ChevronLeft,
   ChevronRight,
   Hexagon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { NAV_ITEMS } from './navConfig';
+import { navItemsForRole } from './navConfig';
+import { useAuth } from '@/contexts/AuthProvider';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 const ICONS = {
@@ -22,12 +24,15 @@ const ICONS = {
   topology: Network,
   risk: Gauge,
   mitre: Shield,
+  users: Users,
   system: Server,
 };
 
 const COLLAPSED_KEY = 'securisphere-sidebar-collapsed';
 
 export default function SidebarNav({ badges = {} }) {
+  const { role } = useAuth();
+  const navItems = navItemsForRole(role);
   const [collapsed, setCollapsed] = useLocalStorage(COLLAPSED_KEY, false);
 
   return (
@@ -100,7 +105,7 @@ export default function SidebarNav({ badges = {} }) {
             Navigation
           </div>
         )}
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = ICONS[item.id] ?? LayoutDashboard;
           const badge = badges[item.id];
           const showSevBadge = item.id === 'incidents' && typeof badge === 'number' && badge > 0;

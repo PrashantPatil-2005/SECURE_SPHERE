@@ -39,6 +39,10 @@ import Mitre from '@/pages/Mitre';
 import Replay from '@/pages/Replay';
 import Audit from '@/pages/Audit';
 import Settings from '@/pages/Settings';
+import UserManagement from '@/pages/UserManagement';
+import Evaluation from '@/pages/Evaluation';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthProvider';
 
 function isTypingTarget(el) {
   if (!el || !(el instanceof Element)) return false;
@@ -49,21 +53,17 @@ function isTypingTarget(el) {
   return false;
 }
 
-export default function AuthenticatedApp({ onLogout }) {
+export default function AuthenticatedApp() {
+  const { logout: authLogout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = tabIdFromPath(location.pathname);
   const toast = useToast();
 
   const silentLogout = useCallback(async () => {
-    try { await api.logout(); } catch { /* ignore */ }
-    try {
-      localStorage.removeItem('securisphere_token');
-      sessionStorage.removeItem('securisphere_token');
-    } catch { /* ignore */ }
-    onLogout?.();
+    await authLogout();
     navigate('/login', { replace: true });
-  }, [onLogout, navigate]);
+  }, [authLogout, navigate]);
 
   const handleLogout = useCallback(async () => {
     if (!window.confirm('Sign out of SecuriSphere?')) return;
@@ -340,16 +340,60 @@ export default function AuthenticatedApp({ onLogout }) {
                   path="/incidents"
                   element={<Incidents incidents={incidents} onReplayRequest={() => navigate('/topology')} />}
                 />
-                <Route path="/campaigns" element={<Campaigns />} />
+                <Route
+                  path="/campaigns"
+                  element={(
+                    <ProtectedRoute roles={['admin', 'analyst']}>
+                      <Campaigns />
+                    </ProtectedRoute>
+                  )}
+                />
+                <Route
+                  path="/evaluation"
+                  element={(
+                    <ProtectedRoute roles={['admin', 'analyst']}>
+                      <Evaluation />
+                    </ProtectedRoute>
+                  )}
+                />
                 <Route
                   path="/topology"
                   element={<Topology topology={topology} riskScores={riskScores} incidents={incidents} />}
                 />
                 <Route path="/risk" element={<RiskScores riskScores={riskScores} />} />
-                <Route path="/mitre" element={<Mitre />} />
-                <Route path="/replay" element={<Replay />} />
-                <Route path="/audit" element={<Audit />} />
-                <Route path="/system" element={<System systemStatus={systemStatus} onRefresh={refetch} />} />
+                <Route
+                  path="/mitre"
+                  element={(
+                    <ProtectedRoute roles={['admin', 'analyst']}>
+                      <Mitre />
+                    </ProtectedRoute>
+                  )}
+                />
+                <Route
+                  path="/replay"
+                  element={(
+                    <ProtectedRoute roles={['admin', 'analyst']}>
+                      <Replay />
+                    </ProtectedRoute>
+                  )}
+                />
+                <Route
+                  path="/audit"
+                  element={(
+                    <ProtectedRoute roles={['admin']}>
+                      <Audit />
+                    </ProtectedRoute>
+                  )}
+                />
+                <Route path="/users" element={<UserManagement />} />
+                <Route
+                  path="/system"
+                  element={(
+                    <ProtectedRoute roles={['admin']}>
+                      <System systemStatus={systemStatus} onRefresh={refetch} />
+                    </ProtectedRoute>
+                  )}
+                />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />

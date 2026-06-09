@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Shield, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthProvider';
 
-export default function Login({ onLogin }) {
+export default function Login() {
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
@@ -21,16 +21,9 @@ export default function Login({ onLogin }) {
     }
     setLoading(true);
     try {
-      const data = await api.login(username.trim(), password);
-      if (data.success) {
-        const store = remember ? localStorage : sessionStorage;
-        store.setItem('securisphere_token', data.token || 'authenticated');
-        onLogin(data);
-      } else {
-        setError(data.message || 'Invalid credentials.');
-      }
-    } catch {
-      setError('Cannot reach backend. Is it running?');
+      await login(username.trim(), password, remember);
+    } catch (err) {
+      setError(err?.message || 'Cannot reach backend. Is it running?');
     } finally {
       setLoading(false);
     }
@@ -117,14 +110,9 @@ export default function Login({ onLogin }) {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-xs text-base-500">
-            Need an account?{' '}
-            <Link to="/signup" className="text-accent hover:text-accent-hover transition-colors font-medium">
-              Sign up
-            </Link>
-          </p>
-        </div>
+        <p className="mt-6 text-center text-[11px] text-base-600">
+          Accounts are created by administrators. Contact your SecuriSphere admin for access.
+        </p>
 
         <div className="mt-6 flex items-center gap-3">
           <div className="h-px flex-1 bg-base-800" />

@@ -28,6 +28,7 @@ for _root in (_here.parent, _here.parent.parent):
         break
 
 from auth import auth_bp, token_required, role_required
+from users_bp import users_bp
 from topology_checks import bp as topology_checks_bp
 from ai_endpoints import bp as ai_bp
 from engine_proxy import engine_proxy_bp
@@ -129,6 +130,7 @@ except Exception as _exc:  # graceful degradation
 
 # Register Blueprints
 app.register_blueprint(auth_bp)
+app.register_blueprint(users_bp)
 app.register_blueprint(topology_checks_bp)
 app.register_blueprint(ai_bp)
 app.register_blueprint(engine_proxy_bp)

@@ -1,11 +1,15 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { NAV_ITEMS } from './navConfig';
+import { navItemsForRole } from './navConfig';
+import { useAuth } from '@/contexts/AuthProvider';
 
 /**
  * Polished horizontal navigation tabs (production-ready).
  */
 export default function AppNavTabs({ badges = {}, className }) {
+  const { role } = useAuth();
+  const navItems = navItemsForRole(role);
+
   return (
     <div
       className={cn(
@@ -15,7 +19,7 @@ export default function AppNavTabs({ badges = {}, className }) {
     >
       {/* Scroll container */}
       <div className="flex gap-2 overflow-x-auto px-1 pb-2 scrollbar-none">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const badge = badges[item.id];
 
           return (

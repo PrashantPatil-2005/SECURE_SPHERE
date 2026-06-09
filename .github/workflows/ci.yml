@@ -31,6 +31,9 @@ jobs:
       - name: Service-centric correlation unit tests
         run: pytest tests/test_service_correlation.py -q
 
+      - name: RBAC auth unit tests
+        run: pytest tests/test_rbac_auth.py -q
+
       - name: Churn resilience experiment (offline)
         run: python scripts/churn_experiment.py --min-completeness 0.5
 

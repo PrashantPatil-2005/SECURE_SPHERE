@@ -52,6 +52,53 @@ export function writeToken(token) {
   }
 }
 
+export function readRefreshToken() {
+  try {
+    return (
+      localStorage.getItem('securisphere_refresh') ||
+      sessionStorage.getItem('securisphere_refresh') ||
+      ''
+    );
+  } catch {
+    return '';
+  }
+}
+
+export function writeRefreshToken(token) {
+  const store = getTokenStorage() || localStorage;
+  try {
+    if (token) store.setItem('securisphere_refresh', token);
+    else store.removeItem('securisphere_refresh');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearAuthTokens() {
+  try {
+    localStorage.removeItem('securisphere_token');
+    localStorage.removeItem('securisphere_refresh');
+    sessionStorage.removeItem('securisphere_token');
+    sessionStorage.removeItem('securisphere_refresh');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function persistAuthTokens({ access_token, token, refresh_token }, remember = true) {
+  const store = remember ? localStorage : sessionStorage;
+  const other = remember ? sessionStorage : localStorage;
+  const access = access_token || token;
+  try {
+    if (access) store.setItem('securisphere_token', access);
+    if (refresh_token) store.setItem('securisphere_refresh', refresh_token);
+    other.removeItem('securisphere_token');
+    other.removeItem('securisphere_refresh');
+  } catch {
+    /* ignore */
+  }
+}
+
 export function tokenExpSeconds(token) {
   const payload = decodeJwt(token);
   if (!payload || typeof payload.exp !== 'number') return null;

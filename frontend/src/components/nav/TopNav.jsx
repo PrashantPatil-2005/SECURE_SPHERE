@@ -7,11 +7,13 @@ import {
   Gauge,
   Shield,
   Server,
+  Users,
   User,
   Command,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { NAV_ITEMS } from './navConfig';
+import { navItemsForRole } from './navConfig';
+import { useAuth } from '@/contexts/AuthProvider';
 
 const ICONS = {
   dashboard: LayoutDashboard,
@@ -20,6 +22,7 @@ const ICONS = {
   topology: Network,
   risk: Gauge,
   mitre: Shield,
+  users: Users,
   system: Server,
 };
 
@@ -29,12 +32,15 @@ export default function TopNav({
   onProfileClick,
   onOpenCommandPalette,
 }) {
+  const { role } = useAuth();
+  const navItems = navItemsForRole(role);
+
   return (
     <header className="flex h-[56px] items-center justify-between border-b border-base-800 bg-base-900/80 px-4 backdrop-blur">
 
       {/* LEFT: NAVIGATION */}
       <nav aria-label="Primary" className="flex items-center gap-4 overflow-x-auto">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = ICONS[item.id] ?? LayoutDashboard;
           const badge = badges[item.id];
 

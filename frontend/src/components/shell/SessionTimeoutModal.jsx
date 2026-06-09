@@ -4,7 +4,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import { api } from '@/lib/api';
-import { writeToken } from '@/lib/jwt';
+import { persistAuthTokens, readRefreshToken } from '@/lib/jwt';
 import { useToast } from '@/components/ui/Toaster';
 
 function fmt(secs) {
@@ -26,9 +26,9 @@ export default function SessionTimeoutModal({ onLogout }) {
   const handleStay = async () => {
     setRefreshing(true);
     try {
-      const res = await api.refreshToken();
-      if (res?.token) {
-        writeToken(res.token);
+      const res = await api.refreshToken(readRefreshToken());
+      if (res?.token || res?.access_token) {
+        persistAuthTokens(res, !!localStorage.getItem('securisphere_refresh'));
         refreshExp();
         toast.success('Session extended');
       } else {

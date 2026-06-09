@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { NAV_ITEMS } from '@/components/nav/navConfig';
+import { navItemsForRole } from '@/components/nav/navConfig';
+import { useAuth } from '@/contexts/AuthProvider';
 
 /**
  * @param {object} opts
@@ -8,6 +9,7 @@ import { NAV_ITEMS } from '@/components/nav/navConfig';
  * @param {Array<{id:string,section:string,label:string,detail?:string,keywords?:string,run:Function}>} [opts.extraCommands]
  */
 export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
+  const { role } = useAuth();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -23,7 +25,7 @@ export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
       setHighlight(0);
     };
 
-    const navCmds = NAV_ITEMS.map((item) => ({
+    const navCmds = navItemsForRole(role).map((item) => ({
       id: `go-${item.id}`,
       section: 'Navigate',
       label: `Go to ${item.label}`,
@@ -97,7 +99,7 @@ export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
     }));
 
     return [...navCmds, ...wrapped, ...filterCmds, ...actionCmds];
-  }, [onNavigate, onToast, extraCommands]);
+  }, [onNavigate, onToast, extraCommands, role]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

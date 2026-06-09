@@ -1,4 +1,4 @@
-/** @typedef {'dashboard'|'events'|'incidents'|'campaigns'|'evaluation'|'topology'|'risk'|'mitre'|'audit'|'system'} TabId */
+/** @typedef {'dashboard'|'events'|'incidents'|'campaigns'|'evaluation'|'topology'|'risk'|'mitre'|'audit'|'system'|'users'} TabId */
 
 /**
  * @typedef NavItem
@@ -22,17 +22,18 @@ export const VALID_NAV_SHELLS = Object.values(NAV_SHELL);
 
 /** 🔥 SINGLE SOURCE OF TRUTH */
 export const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', path: '/dashboard', section: 'core' },
-  { id: 'events', label: 'Events', path: '/events', section: 'analysis' },
-  { id: 'incidents', label: 'Incidents', path: '/incidents', section: 'analysis' },
-  { id: 'campaigns', label: 'Campaigns', path: '/campaigns', section: 'analysis' },
-  { id: 'evaluation', label: 'Evaluation', path: '/evaluation', section: 'analysis' },
-  { id: 'topology', label: 'Topology', path: '/topology', section: 'infra' },
-  { id: 'risk', label: 'Risk', path: '/risk', section: 'analysis' },
-  { id: 'mitre', label: 'MITRE', path: '/mitre', section: 'security' },
-  { id: 'replay', label: 'Replay', path: '/replay', section: 'security' },
-  { id: 'audit', label: 'Audit', path: '/audit', section: 'security' },
-  { id: 'system', label: 'System', path: '/system', section: 'system' },
+  { id: 'dashboard', label: 'Dashboard', path: '/dashboard', section: 'core', roles: ['admin', 'analyst', 'viewer'] },
+  { id: 'events', label: 'Events', path: '/events', section: 'analysis', roles: ['admin', 'analyst', 'viewer'] },
+  { id: 'incidents', label: 'Incidents', path: '/incidents', section: 'analysis', roles: ['admin', 'analyst', 'viewer'] },
+  { id: 'campaigns', label: 'Campaigns', path: '/campaigns', section: 'analysis', roles: ['admin', 'analyst'] },
+  { id: 'evaluation', label: 'Evaluation', path: '/evaluation', section: 'analysis', roles: ['admin', 'analyst'] },
+  { id: 'topology', label: 'Topology', path: '/topology', section: 'infra', roles: ['admin', 'analyst', 'viewer'] },
+  { id: 'risk', label: 'Risk', path: '/risk', section: 'analysis', roles: ['admin', 'analyst', 'viewer'] },
+  { id: 'mitre', label: 'MITRE', path: '/mitre', section: 'security', roles: ['admin', 'analyst'] },
+  { id: 'replay', label: 'Replay', path: '/replay', section: 'security', roles: ['admin', 'analyst'] },
+  { id: 'audit', label: 'Audit', path: '/audit', section: 'security', roles: ['admin'] },
+  { id: 'users', label: 'Users', path: '/users', section: 'system', roles: ['admin'] },
+  { id: 'system', label: 'System', path: '/system', section: 'system', roles: ['admin'] },
 ];
 
 /** ⚡ Derived maps (computed once) */
@@ -62,4 +63,10 @@ export function tabIdFromPath(pathname) {
   }
 
   return 'dashboard';
+}
+
+/** @param {string|null|undefined} role */
+export function navItemsForRole(role) {
+  const r = String(role || 'viewer').toLowerCase();
+  return NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(r));
 }

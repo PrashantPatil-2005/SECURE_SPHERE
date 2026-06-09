@@ -166,8 +166,48 @@ export const api = {
   me: () =>
     authFetch(`${BASE}/api/auth/me`).then(r => r.json()),
 
-  refreshToken: () =>
-    authFetch(`${BASE}/api/auth/refresh`, { method: 'POST' }).then(r => r.json()),
+  refreshToken: (refreshToken) =>
+    fetch(`${BASE}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    }).then(r => r.json()),
+
+  listUsers: () =>
+    authFetch(`${BASE}/api/users`).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || `API ${r.status}`);
+      return j;
+    }),
+
+  createUser: (payload) =>
+    authFetch(`${BASE}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || `API ${r.status}`);
+      return j;
+    }),
+
+  updateUser: (id, payload) =>
+    authFetch(`${BASE}/api/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || `API ${r.status}`);
+      return j;
+    }),
+
+  deleteUser: (id) =>
+    authFetch(`${BASE}/api/users/${id}`, { method: 'DELETE' }).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || `API ${r.status}`);
+      return j;
+    }),
 
   changePassword: (currentPassword, newPassword) =>
     authFetch(`${BASE}/api/auth/change-password`, {

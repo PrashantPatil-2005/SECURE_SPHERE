@@ -1,20 +1,23 @@
 """
 SecuriSphere — Authentication Blueprint
 ========================================
-POST /api/auth/login   → Validate credentials, return JWT
-POST /api/auth/verify  → Validate an existing JWT token
-GET  /api/auth/me      → Return current user info from token
+POST /api/auth/login    → Credentials → access + refresh JWTs
+POST /api/auth/refresh  → Rotate refresh token
+POST /api/auth/logout   → Revoke tokens
+GET  /api/auth/me       → Current user + permissions
 
 Security:
-  • JWT_SECRET is REQUIRED in production (FLASK_ENV=production); boot fails otherwise.
-  • Passwords are stored as Werkzeug pbkdf2/scrypt hashes. Plaintext passwords
-    are accepted ONLY when ALLOW_PLAINTEXT_LOGIN=1 (legacy seed migration).
-  • Default behaviour rejects any non-hashed password.
+  • bcrypt password hashing (Werkzeug legacy verified on login, auto-upgraded)
+  • Short-lived access JWT + DB-backed refresh token rotation
+  • RBAC roles: admin, analyst, viewer
 """
 
+import hashlib
 import os
 import re
+import secrets
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from threading import Lock
@@ -23,7 +26,9 @@ import jwt
 import psycopg2
 import psycopg2.extras
 from flask import Blueprint, jsonify, request
-from werkzeug.security import check_password_hash, generate_password_hash
+
+from password_utils import hash_password, verify_password, needs_rehash, upgrade_hash
+from rbac import normalize_role, permissions_for_role, permission_required, ROLES
 
 try:
     from .audit import log_audit
@@ -39,10 +44,16 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "1"))
+if os.getenv("JWT_ACCESS_MINUTES"):
+    JWT_ACCESS_MINUTES = int(os.getenv("JWT_ACCESS_MINUTES"))
+elif os.getenv("JWT_EXPIRATION_HOURS"):
+    JWT_ACCESS_MINUTES = int(float(os.getenv("JWT_EXPIRATION_HOURS", "1")) * 60)
+else:
+    JWT_ACCESS_MINUTES = 15
+JWT_REFRESH_DAYS = int(os.getenv("JWT_REFRESH_DAYS", "7"))
 FLASK_ENV = os.getenv("FLASK_ENV", "production").lower()
 ALLOW_PLAINTEXT_LOGIN = os.getenv("ALLOW_PLAINTEXT_LOGIN", "0") == "1"
-ALLOW_PUBLIC_REGISTRATION = os.getenv("ALLOW_PUBLIC_REGISTRATION", "1") == "1"
+ALLOW_PUBLIC_REGISTRATION = os.getenv("ALLOW_PUBLIC_REGISTRATION", "0") == "1"
 
 # In-memory token blocklist for /logout. Process-local; fine for single worker.
 _blocklist: set[str] = set()
@@ -169,12 +180,13 @@ def _track_session(token, payload):
 
 
 def _ensure_auth_schema():
-    """Create auth table for fresh deployments. NEVER seeds plaintext."""
+    """Create auth + RBAC tables for fresh deployments."""
     conn = None
     try:
         conn = _get_db_connection()
         with conn:
             with conn.cursor() as cur:
+                cur.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS users (
@@ -182,36 +194,72 @@ def _ensure_auth_schema():
                         username VARCHAR(50) NOT NULL UNIQUE,
                         email VARCHAR(100) NOT NULL,
                         password_hash VARCHAR(255) NOT NULL,
-                        role VARCHAR(20) DEFAULT 'user',
+                        role VARCHAR(20) DEFAULT 'viewer',
                         failed_attempts INTEGER NOT NULL DEFAULT 0,
                         locked_until TIMESTAMPTZ,
                         last_login_at TIMESTAMPTZ,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                        deleted_at TIMESTAMPTZ,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
                     );
                     """
                 )
-                cur.execute(
-                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;"
-                )
-                cur.execute(
-                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;"
-                )
-                cur.execute(
-                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;"
-                )
+                for stmt in (
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();",
+                    """
+                    CREATE TABLE IF NOT EXISTS roles (
+                        id SERIAL PRIMARY KEY, name VARCHAR(32) NOT NULL UNIQUE,
+                        description TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+                    );
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS refresh_tokens (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        token_hash VARCHAR(64) NOT NULL,
+                        expires_at TIMESTAMPTZ NOT NULL,
+                        revoked_at TIMESTAMPTZ,
+                        replaced_by UUID,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        ip VARCHAR(45), user_agent VARCHAR(255)
+                    );
+                    """,
+                    "UPDATE users SET role = 'viewer' WHERE role IN ('user','readonly','guest');",
+                ):
+                    cur.execute(stmt)
 
-                # Bootstrap admin from env vars only — no hardcoded plaintext.
+                for role_name, desc in (
+                    ("admin", "Full platform control"),
+                    ("analyst", "Investigate incidents and campaigns"),
+                    ("viewer", "Read-only dashboards"),
+                ):
+                    cur.execute(
+                        "INSERT INTO roles (name, description) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
+                        (role_name, desc),
+                    )
+
                 bootstrap_user = os.getenv("ADMIN_BOOTSTRAP_USER")
                 bootstrap_pwd = os.getenv("ADMIN_BOOTSTRAP_PASSWORD")
                 if bootstrap_user and bootstrap_pwd:
-                    cur.execute("SELECT 1 FROM users WHERE username=%s", (bootstrap_user,))
+                    cur.execute(
+                        "SELECT 1 FROM users WHERE username=%s AND deleted_at IS NULL",
+                        (bootstrap_user,),
+                    )
                     if not cur.fetchone():
                         cur.execute(
                             "INSERT INTO users (username,email,password_hash,role) "
                             "VALUES (%s,%s,%s,'admin')",
-                            (bootstrap_user,
-                             os.getenv("ADMIN_BOOTSTRAP_EMAIL", f"{bootstrap_user}@local"),
-                             generate_password_hash(bootstrap_pwd)),
+                            (
+                                bootstrap_user,
+                                os.getenv("ADMIN_BOOTSTRAP_EMAIL", f"{bootstrap_user}@local"),
+                                hash_password(bootstrap_pwd),
+                            ),
                         )
                         logger.info("Bootstrapped admin user '%s' from env", bootstrap_user)
     except psycopg2.Error as exc:
@@ -227,14 +275,85 @@ def _fetch_user_by_username(username):
         conn = _get_db_connection()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT id, username, password_hash, role, failed_attempts, locked_until "
-                "FROM users WHERE username = %s",
+                "SELECT id, username, email, password_hash, role, failed_attempts, locked_until, is_active "
+                "FROM users WHERE username = %s AND deleted_at IS NULL",
                 (username,),
             )
             return cur.fetchone()
     finally:
         if conn:
             conn.close()
+
+
+def _client_meta():
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+    if ip and "," in ip:
+        ip = ip.split(",")[0].strip()
+    ua = request.headers.get("User-Agent", "")[:255]
+    return ip[:45], ua
+
+
+def _hash_refresh(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _store_refresh_token(user_id: int, raw_token: str) -> str:
+    token_id = str(uuid.uuid4())
+    ip, ua = _client_meta()
+    expires = datetime.now(timezone.utc) + timedelta(days=JWT_REFRESH_DAYS)
+    conn = _get_db_connection()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip, user_agent) "
+                    "VALUES (%s::uuid, %s, %s, %s, %s, %s)",
+                    (token_id, user_id, _hash_refresh(raw_token), expires, ip, ua),
+                )
+    finally:
+        conn.close()
+    return token_id
+
+
+def _revoke_refresh_token(token_id: str, replaced_by: str | None = None):
+    conn = _get_db_connection()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE refresh_tokens SET revoked_at = NOW(), replaced_by = %s::uuid "
+                    "WHERE id = %s::uuid AND revoked_at IS NULL",
+                    (replaced_by, token_id),
+                )
+    finally:
+        conn.close()
+
+
+def _lookup_refresh(raw_token: str):
+    conn = _get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT rt.id, rt.user_id, rt.expires_at, u.username, u.role, u.is_active "
+                "FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id "
+                "WHERE rt.token_hash = %s AND rt.revoked_at IS NULL AND u.deleted_at IS NULL",
+                (_hash_refresh(raw_token),),
+            )
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def _user_payload(user_row) -> dict:
+    role = normalize_role(user_row.get("role"))
+    return {
+        "id": user_row["id"],
+        "user_id": user_row["id"],
+        "username": user_row["username"],
+        "email": user_row.get("email"),
+        "role": role,
+        "permissions": permissions_for_role(role),
+    }
 
 
 def _record_login_failure(username):
@@ -277,24 +396,42 @@ def _record_login_success(user_id):
 
 # ── JWT helpers ─────────────────────────────────────────────────────────────
 
-def _generate_token(user_row):
+def _generate_access_token(user_row):
     now = datetime.now(timezone.utc)
+    role = normalize_role(user_row.get("role"))
     payload = {
         "user_id": user_row["id"],
         "username": user_row["username"],
-        "role": user_row["role"],
+        "role": role,
+        "permissions": permissions_for_role(role),
+        "type": "access",
         "iat": now,
-        "exp": now + timedelta(hours=JWT_EXPIRATION_HOURS),
+        "exp": now + timedelta(minutes=JWT_ACCESS_MINUTES),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def _decode_token(token):
+def _generate_refresh_token_value():
+    return secrets.token_urlsafe(48)
+
+
+def _issue_token_pair(user_row):
+    access = _generate_access_token(user_row)
+    refresh_raw = _generate_refresh_token_value()
+    refresh_id = _store_refresh_token(user_row["id"], refresh_raw)
+    return access, refresh_raw, refresh_id
+
+
+def _decode_token(token, expected_type: str | None = "access"):
     try:
         with _blocklist_lock:
             if token in _blocklist:
                 return None
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        tok_type = payload.get("type", "access")
+        if expected_type and tok_type != expected_type:
+            return None
+        return payload
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
 
@@ -315,11 +452,13 @@ def token_required(f):
 
 def role_required(*allowed_roles):
     """Decorator to gate a route by user role. Apply after token_required."""
+    allowed = {normalize_role(r) for r in allowed_roles}
+
     def wrapper(f):
         @wraps(f)
         def decorated(*args, **kwargs):
             user = getattr(request, "current_user", None)
-            if not user or user.get("role") not in allowed_roles:
+            if not user or normalize_role(user.get("role")) not in allowed:
                 return jsonify({"status": "error", "message": "Forbidden"}), 403
             return f(*args, **kwargs)
         return decorated
@@ -350,44 +489,36 @@ def login():
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
     if user is None:
-        # Constant-time-ish: still compute a dummy hash check
-        check_password_hash(
-            "pbkdf2:sha256:600000$dummy$0000000000000000000000000000000000000000000000000000000000000000",
-            password,
-        )
+        verify_password("$2b$12$000000000000000000000000000000000000000000000000000000000", password)
         return jsonify({"status": "error", "message": "Invalid username or password"}), 401
 
-    # Lockout enforcement
+    if not user.get("is_active", True):
+        return jsonify({"status": "error", "message": "Account is disabled"}), 403
+
     locked_until = user.get("locked_until")
     if locked_until and locked_until > datetime.now(timezone.utc):
         return jsonify({"status": "error", "message": "Account temporarily locked. Try again later."}), 423
 
     stored_hash = user["password_hash"] or ""
-    password_valid = False
+    password_valid = verify_password(stored_hash, password)
 
-    if stored_hash.startswith(("pbkdf2:", "scrypt:", "$2a$", "$2b$", "$argon2")):
+    if not password_valid and ALLOW_PLAINTEXT_LOGIN and FLASK_ENV != "production":
+        password_valid = stored_hash == password
+
+    if password_valid and (needs_rehash(stored_hash) or (
+        ALLOW_PLAINTEXT_LOGIN and stored_hash == password
+    )):
         try:
-            password_valid = check_password_hash(stored_hash, password)
-        except Exception:
-            password_valid = False
-    elif ALLOW_PLAINTEXT_LOGIN and FLASK_ENV != "production":
-        # Legacy plaintext path — strictly opt-in and never in prod.
-        password_valid = (stored_hash == password)
-        if password_valid:
-            # Auto-upgrade to hash on first successful login.
-            try:
-                conn = _get_db_connection()
-                with conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE users SET password_hash=%s WHERE id=%s",
-                            (generate_password_hash(password), user["id"]),
-                        )
-                conn.close()
-            except Exception as exc:
-                logger.warning("Plaintext-to-hash upgrade failed: %s", exc)
-    else:
-        password_valid = False  # plaintext stored but plaintext login disabled
+            conn = _get_db_connection()
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE users SET password_hash=%s WHERE id=%s",
+                        (upgrade_hash(password), user["id"]),
+                    )
+            conn.close()
+        except Exception as exc:
+            logger.warning("Password hash upgrade failed: %s", exc)
 
     if not password_valid:
         _record_login_failure(username)
@@ -406,9 +537,9 @@ def login():
         return jsonify({"status": "error", "message": "Invalid username or password"}), 401
 
     _record_login_success(user["id"])
-    token = _generate_token(user)
-    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    _track_session(token, payload)
+    access_token, refresh_token, _refresh_id = _issue_token_pair(user)
+    payload = jwt.decode(access_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    _track_session(access_token, payload)
     _ensure_audit_schema()
     _record_audit(username, True, "login")
     log_audit(
@@ -417,21 +548,21 @@ def login():
         actor_type="user",
         target_type="user",
         target_id=str(user.get("id")),
-        detail={"role": user.get("role")},
+        detail={"role": normalize_role(user.get("role"))},
         severity="info",
         source_ip=request.remote_addr,
     )
 
+    user_out = _user_payload(user)
     logger.info("User '%s' authenticated successfully", username)
     return jsonify({
         "status": "success",
         "success": True,
-        "token": token,
-        "user": {
-            "id": user["id"],
-            "username": user["username"],
-            "role": user["role"],
-        },
+        "token": access_token,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": JWT_ACCESS_MINUTES * 60,
+        "user": user_out,
     })
 
 
@@ -458,71 +589,43 @@ def verify():
 @token_required
 def me():
     user = request.current_user
-    return jsonify({"status": "success", "user": {
-        "user_id": user["user_id"],
-        "username": user["username"],
-        "role": user["role"],
-    }})
+    role = normalize_role(user.get("role"))
+    return jsonify({
+        "status": "success",
+        "user": {
+            "user_id": user["user_id"],
+            "id": user["user_id"],
+            "username": user["username"],
+            "role": role,
+            "permissions": user.get("permissions") or permissions_for_role(role),
+        },
+    })
+
+
+@auth_bp.route("/permissions", methods=["GET"])
+@token_required
+def list_permissions():
+    role = normalize_role(request.current_user.get("role"))
+    return jsonify({
+        "status": "success",
+        "role": role,
+        "permissions": permissions_for_role(role),
+        "roles": list(ROLES),
+    })
 
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    """Create a new user account. Hashed password, default role 'user'."""
-    if not ALLOW_PUBLIC_REGISTRATION:
-        return jsonify({"status": "error", "message": "Public registration is disabled"}), 403
-
-    _ensure_auth_schema()
-
-    body = request.get_json(silent=True)
-    if not body:
-        return jsonify({"status": "error", "message": "Request body must be JSON"}), 400
-
-    username = (body.get("username") or "").strip()
-    email = (body.get("email") or "").strip().lower()
-    password = body.get("password") or ""
-
-    if not USERNAME_RE.match(username):
-        return jsonify({"status": "error", "message": "Username must be 3-32 chars (letters, digits, _.-)"}), 400
-    if not EMAIL_RE.match(email):
-        return jsonify({"status": "error", "message": "Invalid email address"}), 400
-    pw_err = _validate_password(password)
-    if pw_err:
-        return jsonify({"status": "error", "message": pw_err}), 400
-
-    conn = None
-    try:
-        conn = _get_db_connection()
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM users WHERE username=%s OR email=%s", (username, email))
-                if cur.fetchone():
-                    return jsonify({"status": "error", "message": "Username or email already in use"}), 409
-                cur.execute(
-                    "INSERT INTO users (username, email, password_hash, role) "
-                    "VALUES (%s, %s, %s, 'user') RETURNING id, username, role",
-                    (username, email, generate_password_hash(password)),
-                )
-                row = cur.fetchone()
-                user_row = {"id": row[0], "username": row[1], "role": row[2]}
-    except psycopg2.Error as db_err:
-        logger.error("Database error during registration: %s", db_err)
-        return jsonify({"status": "error", "message": "Internal server error"}), 500
-    finally:
-        if conn:
-            conn.close()
-
-    token = _generate_token(user_row)
-    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    _track_session(token, payload)
-    _ensure_audit_schema()
-    _record_audit(username, True, "register")
-    logger.info("Registered new user '%s'", username)
+    """Public self-registration disabled — admins create users via POST /api/users."""
+    if ALLOW_PUBLIC_REGISTRATION:
+        return jsonify({
+            "status": "error",
+            "message": "Public registration is deprecated. Contact an administrator.",
+        }), 403
     return jsonify({
-        "status": "success",
-        "success": True,
-        "token": token,
-        "user": user_row,
-    }), 201
+        "status": "error",
+        "message": "Registration is disabled. Accounts are created by administrators.",
+    }), 403
 
 
 @auth_bp.route("/logout", methods=["POST"])
@@ -571,13 +674,13 @@ def change_password():
                 row = cur.fetchone()
                 if not row:
                     return jsonify({"status": "error", "message": "User not found"}), 404
-                if not check_password_hash(row["password_hash"] or "", current):
+                if not verify_password(row["password_hash"] or "", current):
                     _ensure_audit_schema()
                     _record_audit(username, False, "change_password_invalid")
                     return jsonify({"status": "error", "message": "Current password incorrect"}), 401
                 cur.execute(
-                    "UPDATE users SET password_hash=%s WHERE id=%s",
-                    (generate_password_hash(new_pw), user_id),
+                    "UPDATE users SET password_hash=%s, updated_at=NOW() WHERE id=%s",
+                    (hash_password(new_pw), user_id),
                 )
     except psycopg2.Error as db_err:
         logger.error("Database error during change-password: %s", db_err)
@@ -692,35 +795,50 @@ def revoke_session(token_fp):
 
 
 @auth_bp.route("/refresh", methods=["POST"])
-@token_required
 def refresh():
-    """Issue a fresh token to a still-valid session. Old token is revoked."""
-    user = request.current_user
+    """Rotate refresh token → new access + refresh pair."""
+    body = request.get_json(silent=True) or {}
+    refresh_raw = (body.get("refresh_token") or "").strip()
     auth_header = request.headers.get("Authorization", "")
-    old_token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+    if not refresh_raw and auth_header.startswith("Bearer "):
+        refresh_raw = auth_header[7:].strip()
+
+    if not refresh_raw:
+        return jsonify({"status": "error", "message": "refresh_token required"}), 400
+
+    row = _lookup_refresh(refresh_raw)
+    if not row:
+        return jsonify({"status": "error", "message": "Invalid refresh token"}), 401
+
+    expires = row.get("expires_at")
+    if expires and expires < datetime.now(timezone.utc):
+        _revoke_refresh_token(str(row["id"]))
+        return jsonify({"status": "error", "message": "Refresh token expired"}), 401
+
+    if not row.get("is_active", True):
+        return jsonify({"status": "error", "message": "Account disabled"}), 403
 
     user_row = {
-        "id": user["user_id"],
-        "username": user["username"],
-        "role": user["role"],
+        "id": row["user_id"],
+        "username": row["username"],
+        "role": row["role"],
     }
-    new_token = _generate_token(user_row)
-    new_payload = jwt.decode(new_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    _track_session(new_token, new_payload)
+    old_id = str(row["id"])
+    access_token, new_refresh, new_id = _issue_token_pair(user_row)
+    _revoke_refresh_token(old_id, replaced_by=new_id)
 
-    if old_token:
-        with _blocklist_lock:
-            _blocklist.add(old_token)
-            if len(_blocklist) > 10000:
-                _blocklist.clear()
-        with _sessions_lock:
-            _sessions.pop(old_token, None)
+    payload = jwt.decode(access_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    _track_session(access_token, payload)
 
+    user_out = _user_payload(user_row)
     return jsonify({
         "status": "success",
         "success": True,
-        "token": new_token,
-        "user": user_row,
+        "token": access_token,
+        "access_token": access_token,
+        "refresh_token": new_refresh,
+        "expires_in": JWT_ACCESS_MINUTES * 60,
+        "user": user_out,
     })
 
 

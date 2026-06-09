@@ -19,7 +19,10 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
     if token.startswith("Bearer "):
         token = token[7:]
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type", "access") != "access":
+            return None
+        return payload
     except jwt.PyJWTError:
         return None
 
