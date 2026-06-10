@@ -151,13 +151,6 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }).then(r => r.json()),
 
-  register: (username, email, password) =>
-    fetch(`${BASE}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password }),
-    }).then(r => r.json()),
-
   logout: () =>
     authFetch(`${BASE}/api/auth/logout`, { method: 'POST' })
       .then(r => r.json())
@@ -251,4 +244,25 @@ export const api = {
     authFetch(`${BASE}/api/engine/threat-intel`).then(r => r.json()).then(j => j.data ?? j),
   getIncidentExplain: (incidentId) =>
     authFetch(`${BASE}/api/engine/incident/${encodeURIComponent(incidentId)}/explain`).then(r => r.json()).then(j => j.data ?? j),
+
+  // AI endpoints (token-required). Use authFetch so the Bearer token is sent.
+  explainAnomaly: (service, score, topEvents = []) =>
+    authFetch(`${BASE}/api/ai/explain_anomaly`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service, score, top_events: topEvents }),
+    }).then(r => r.json()),
+
+  getIncidentReports: (incidentId) =>
+    authFetch(`${BASE}/api/ai/reports/${encodeURIComponent(incidentId)}`).then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      return { ...j, ok: r.ok, http_status: r.status };
+    }),
+
+  generateIncidentReport: (incidentId) =>
+    authFetch(`${BASE}/api/ai/report/${encodeURIComponent(incidentId)}`, { method: 'POST' })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        return { ...j, ok: r.ok, http_status: r.status };
+      }),
 };

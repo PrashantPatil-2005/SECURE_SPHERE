@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Bell, Sun, Moon, RefreshCw, Trash2, Loader2, Terminal } from 'lucide-react';
@@ -36,6 +36,7 @@ export default function Header({
   onOpenNotifications,
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [primary, secondary] = PATH_LABELS[location.pathname] || ['SecuriSphere', ''];
   const { openPalette } = useOpenCommandPalette();
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,6 +67,16 @@ export default function Header({
     const id = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  const handleResultClick = (res) => {
+    const isIncident = !!(res.incident_id || res.scenario_label);
+    const id = res.incident_id || res.event_id;
+    const path = isIncident ? '/incidents' : '/events';
+    const dest = id ? `${path}?focus=${encodeURIComponent(id)}` : path;
+    setSearchQuery('');
+    setSearchResults(null);
+    navigate(dest);
+  };
 
   return (
     <header className="sticky top-0 z-40 flex h-[52px] items-center justify-between gap-3 border-b border-base-800 bg-base-950/95 px-5 backdrop-blur-xl transition-colors duration-200">
@@ -163,10 +174,7 @@ export default function Header({
                   <div
                     key={res.event_id || res.incident_id || idx}
                     className="cursor-pointer rounded-md p-2 transition-colors duration-200 hover:bg-base-950/50"
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSearchResults(null);
-                    }}
+                    onClick={() => handleResultClick(res)}
                   >
                     <div className="text-[11px] font-semibold text-base-200">
                       {res.title || res.scenario_label || res.event_type || 'Unknown'}

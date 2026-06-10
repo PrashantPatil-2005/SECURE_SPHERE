@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Settings as SettingsIcon, User, Bell, Palette, Volume2, VolumeX, Sun, Moon,
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import EmptyState from '@/components/ui/EmptyState';
 import { useAppStore } from '@/stores/useAppStore';
 import { useToast } from '@/components/ui/Toaster';
+import { useAuth } from '@/contexts/AuthProvider';
 import { api } from '@/lib/api';
 import { cn, formatTimestampFull, relativeTime } from '@/lib/utils';
 
@@ -22,20 +23,11 @@ const TABS = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
 ];
 
-function getUser() {
-  try {
-    const raw = localStorage.getItem('securisphere_user') || sessionStorage.getItem('securisphere_user');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function Settings() {
   const [params, setParams] = useSearchParams();
   const initial = TABS.find((t) => t.id === params.get('tab'))?.id || 'profile';
   const [tab, setTab] = useState(initial);
-  const user = useMemo(getUser, []);
+  const { user } = useAuth();
 
   const theme = useAppStore((s) => s.theme);
   const toggleTheme = useAppStore((s) => s.toggleTheme);

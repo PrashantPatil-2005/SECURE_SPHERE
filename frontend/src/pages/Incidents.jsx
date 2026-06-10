@@ -130,12 +130,9 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
 
   const fetchExistingReport = async () => {
     try {
-      const res = await fetch(`/api/ai/reports/${inc.incident_id}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.reports && data.reports.length > 0) {
-          setReport(data.reports[data.reports.length - 1].content);
-        }
+      const data = await api.getIncidentReports(inc.incident_id);
+      if (data.ok && data.reports && data.reports.length > 0) {
+        setReport(data.reports[data.reports.length - 1].content);
       }
     } catch (e) {
       console.error('Failed to fetch existing reports', e);
@@ -147,10 +144,9 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
     setGeneratingReport(true);
     setReportError(null);
     try {
-      const res = await fetch(`/api/ai/report/${inc.incident_id}`, { method: 'POST' });
-      const data = await res.json();
-      
-      if (res.ok && data.success) {
+      const data = await api.generateIncidentReport(inc.incident_id);
+
+      if (data.ok && data.success) {
         setReport(data.report);
         // Success state could be handled with a toast if available
       } else {

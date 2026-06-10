@@ -39,16 +39,9 @@ export default function RiskScores({ riskScores }) {
   const handleExplain = async (service, score, top_events) => {
     setLoadingExplanations(prev => ({ ...prev, [service]: true }));
     try {
-      const res = await fetch('/api/ai/explain_anomaly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service, score, top_events })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setExplanations(prev => ({ ...prev, [service]: data.explanation }));
-        }
+      const data = await api.explainAnomaly(service, score, top_events);
+      if (data.success) {
+        setExplanations(prev => ({ ...prev, [service]: data.explanation }));
       }
     } catch (e) {
       console.error('Failed to get explanation', e);
