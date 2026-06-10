@@ -4,13 +4,12 @@ import os
 from datetime import datetime
 from ai.client import generate_completion, stream_completion
 from ai.prompts import CHAT_SYSTEM_PROMPT, POST_INCIDENT_REPORT_PROMPT
+from auth import token_required
 
 bp = Blueprint('ai', __name__, url_prefix='/api/ai')
 
-# We'll use the existing redis client from app
-# To avoid circular imports, we'll import it inside the route or assume the caller passes context.
-
 @bp.route('/stream', methods=['GET'])
+@token_required
 def get_thought_stream():
     # Fetch recent AI commentary from Redis
     try:
@@ -25,6 +24,7 @@ def get_thought_stream():
         return jsonify({"error": str(e)}), 500
 
 @bp.route('/chat', methods=['POST'])
+@token_required
 def chat():
     data = request.json
     user_msg = data.get('message', '')
@@ -60,6 +60,7 @@ def chat():
 
 
 @bp.route('/report/<incident_id>', methods=['POST'])
+@token_required
 def generate_report(incident_id):
     from app import get_incidents
     # Fetch incident
@@ -100,6 +101,7 @@ def generate_report(incident_id):
 
 
 @bp.route('/reports/<incident_id>', methods=['GET'])
+@token_required
 def get_reports(incident_id):
     from ai.report_generator import get_reports_for_incident
     reports = get_reports_for_incident(incident_id)
@@ -107,6 +109,7 @@ def get_reports(incident_id):
 
 
 @bp.route('/explain_anomaly', methods=['POST'])
+@token_required
 def explain_anomaly():
     data = request.json
     service = data.get("service")

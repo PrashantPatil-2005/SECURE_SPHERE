@@ -38,13 +38,8 @@ def _proxy(path: str) -> Response:
         )
 
 
-@bp.route("/api/campaigns", methods=["GET"])
-@bp.route("/api/campaigns/<campaign_id>", methods=["GET"])
 @bp.route("/api/search/events", methods=["GET"])
 @bp.route("/api/evaluation/results", methods=["GET"])
 @token_required
-def bff_routes(campaign_id=None):
-    if campaign_id:
-        return _proxy(f"/api/campaigns/{campaign_id}")
-    path = request.path
-    return _proxy(path)
+def bff_routes():
+    return _proxy(request.path)

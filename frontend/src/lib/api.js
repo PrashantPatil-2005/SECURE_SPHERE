@@ -71,7 +71,7 @@ export const api = {
   getMetrics: () => request('/api/metrics'),
   getRiskScores: () => request('/api/risk-scores'),
   getRiskAccounts: () => request('/api/v2/risk/accounts'),
-  getEvaluationResults: () => request('/api/evaluation/results'),
+  getEvaluationResults: () => request('/api/v2/evaluation/results'),
   getTopology: () =>
     request('/api/topology')
       .catch(() => request('/topology/graph'))
@@ -109,7 +109,7 @@ export const api = {
     authFetch(`${BASE}/api/mttd/report`).then(r => r.json()),
 
   simulateAttack: (scenario) =>
-    authFetch(`${BASE}/api/attack/simulate`, {
+    authFetch(`${BASE}/api/attack/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenario }),

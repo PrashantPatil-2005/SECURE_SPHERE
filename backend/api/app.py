@@ -412,6 +412,7 @@ def health():
     })
 
 @app.route('/api/dashboard/summary')
+@token_required
 def dashboard_summary():
     metrics = calculate_metrics()
     return jsonify({
@@ -433,6 +434,7 @@ def dashboard_summary():
     })
 
 @app.route('/api/events')
+@token_required
 def get_events():
     layer = request.args.get('layer', 'all')
     limit = min(int(request.args.get('limit', 50)), 500)
@@ -480,6 +482,7 @@ def get_events():
     })
 
 @app.route('/api/events/<event_id>')
+@token_required
 def get_single_event(event_id):
     # Search in all lists (expensive but necessary without index)
     # Optimization: Search recent 1000 first
@@ -520,6 +523,7 @@ def _write_incident_status_redis(incident_id, status, note):
 
 
 @app.route('/api/incidents')
+@token_required
 def list_incidents():
     limit = min(int(request.args.get('limit', 20)), 100)
     incidents = get_incidents(limit)
@@ -579,6 +583,7 @@ def list_incidents():
     })
 
 @app.route('/api/incidents/<incident_id>')
+@token_required
 def get_incident(incident_id):
     incidents = get_incidents(100)
     for i in incidents:
@@ -592,6 +597,7 @@ def get_incident(incident_id):
     return jsonify({"status": "error", "message": "Incident not found"}), 404
 
 @app.route('/api/risk-scores')
+@token_required
 def list_risk_scores():
     risks = get_risk_scores()
 
@@ -633,6 +639,7 @@ def list_risk_scores():
     })
 
 @app.route('/api/risk-scores/<ip>')
+@token_required
 def get_ip_risk(ip):
     risks = get_risk_scores()
     if ip in risks:
@@ -640,6 +647,7 @@ def get_ip_risk(ip):
     return jsonify({"status": "error", "message": "Risk score not found"}), 404
 
 @app.route('/api/metrics')
+@token_required
 def system_metrics():
     return jsonify({
         "status": "success", 
@@ -647,6 +655,7 @@ def system_metrics():
     })
 
 @app.route('/api/metrics/timeline')
+@token_required
 def metrics_timeline():
     # Mocking timeline for now as we don't have time-series DB
     # In real impl, we would bucket recent events
@@ -684,6 +693,7 @@ def metrics_timeline():
     })
 
 @app.route('/api/events/latest')
+@token_required
 def latest_events():
     return jsonify({
         "status": "success",
@@ -727,6 +737,7 @@ def clear_events():
     })
 
 @app.route('/api/system/status')
+@token_required
 def system_status():
     status = {
         "redis": {"connected": redis_available},
@@ -898,6 +909,7 @@ def _validate_upstream(url: str) -> str:
 
 
 @app.route('/api/config/proxy', methods=['GET'])
+@token_required
 def get_proxy_config():
     cfg = _read_waf_config()
     # Live stats from waf-proxy admin endpoint
@@ -980,6 +992,7 @@ def set_proxy_config():
 # ============================================================
 
 @app.route('/api/search')
+@token_required
 def search_events():
     """
     Lightweight substring search across the last 1 000 events.
@@ -1124,6 +1137,7 @@ def periodic_metrics():
 # ============================================================
 
 @app.route('/api/topology')
+@token_required
 def get_topology():
     """
     Proxy the live service-dependency graph from the topology-collector.
@@ -1173,6 +1187,7 @@ def get_topology():
 
 
 @app.route('/api/topology/service/<service_name>')
+@token_required
 def get_topology_service(service_name):
     """Proxy a single service lookup from the topology-collector."""
     try:
@@ -1216,6 +1231,7 @@ def _fetch_kill_chain_from_pg(incident_id: str):
 
 
 @app.route('/api/kill-chains')
+@token_required
 def list_kill_chains():
     """
     List recent kill chains from PostgreSQL.
@@ -1284,6 +1300,7 @@ def list_kill_chains():
 
 
 @app.route('/api/kill-chains/<incident_id>')
+@token_required
 def get_kill_chain(incident_id):
     """
     Drill-down into a specific kill chain.
@@ -1470,6 +1487,7 @@ def update_incident_status(incident_id):
 
 
 @app.route('/api/incidents/<incident_id>/status', methods=['GET'])
+@token_required
 def get_incident_status(incident_id):
     """Return the current status for an incident (Redis hash, fallback open)."""
     status, note, updated_at = _read_incident_status_redis(incident_id)
@@ -1486,6 +1504,7 @@ def get_incident_status(incident_id):
 # ============================================================
 
 @app.route('/api/demo-status')
+@token_required
 def demo_status():
     """Return whether a demo scenario is currently running."""
     try:
@@ -1512,6 +1531,7 @@ def demo_status():
 
 
 @app.route('/api/mitre-mapping')
+@token_required
 def mitre_mapping():
     """
     Merge the static MITRE_MAP (every technique SecuriSphere can detect)
@@ -1608,6 +1628,7 @@ def mitre_mapping():
 # "covered" when hit_count > 0, else falls back to MITRE_MAP.coverage.
 
 @app.route('/api/v2/mitre/coverage')
+@token_required
 def mitre_coverage_v2():
     # ---- 1. Aggregate hits + last_seen from recent incidents -----------
     hit_counts: dict = defaultdict(int)
@@ -1736,6 +1757,7 @@ def _worst_severity(values):
 
 
 @app.route('/api/v2/risk/accounts')
+@token_required
 def risk_accounts_v2():
     """Group incidents by target_username and return per-user risk summaries."""
     rows = []
@@ -2045,6 +2067,7 @@ def audit_logs_v2():
 # ============================================================
 
 @app.route('/api/mttd/report')
+@token_required
 def mttd_report():
     """
     Return per-scenario / per-incident-type MTTD statistics.
@@ -2151,6 +2174,7 @@ def _serialize_campaign(row):
 
 
 @app.route('/api/campaigns', methods=['GET'])
+@token_required
 def list_campaigns():
     """List campaigns, newest activity first.
 
@@ -2198,6 +2222,7 @@ def list_campaigns():
 
 
 @app.route('/api/campaigns/<campaign_id>', methods=['GET'])
+@token_required
 def get_campaign(campaign_id):
     """Drill-down: campaign + its incidents + merged kill chain."""
     import psycopg2.extras
@@ -2258,6 +2283,7 @@ def get_campaign(campaign_id):
 
 
 @app.route('/api/campaigns/stats', methods=['GET'])
+@token_required
 def campaigns_stats():
     """Aggregate counts for the dashboard KPI strip."""
     try:
@@ -2297,6 +2323,7 @@ def campaigns_stats():
 
 # GET Endpoint to retrieve current config
 @app.route('/api/config/discord', methods=['GET'])
+@token_required
 def get_discord_config():
     try:
         # Fetch from Redis key 'config:discord_webhook'
@@ -2544,6 +2571,7 @@ def api_attack_run():
 
 
 @app.route('/api/dev/fire-kill-chain', methods=['POST', 'GET'])
+@token_required
 def api_dev_fire_kill_chain():
     """Demo + debug endpoint. Synthesizes a full kill chain incident and
     pushes it through the same publish path as the simulator. Verifies
@@ -2582,6 +2610,7 @@ def api_dev_fire_kill_chain():
 
 
 @app.route('/api/attack/status', methods=['GET'])
+@_attack_auth_guard
 def api_attack_status():
     with _attack_lock:
         return jsonify({
