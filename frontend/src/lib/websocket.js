@@ -3,6 +3,18 @@ import { io } from 'socket.io-client';
 const BASE = import.meta.env.VITE_API_URL ?? '';
 let socket = null;
 
+function currentToken() {
+  try {
+    return (
+      localStorage.getItem('securisphere_token') ||
+      sessionStorage.getItem('securisphere_token') ||
+      ''
+    );
+  } catch {
+    return '';
+  }
+}
+
 export function connectSocket(handlers) {
   if (socket) socket.disconnect();
 
@@ -11,11 +23,15 @@ export function connectSocket(handlers) {
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionAttempts: Infinity,
+    // Function form so each (re)connection grabs the freshest token after an
+    // access-token refresh. Backend rejects the handshake without a valid JWT.
+    auth: (cb) => cb({ token: currentToken() }),
   };
   socket = BASE ? io(BASE, opts) : io(opts);
 
   socket.on('connect', () => handlers.onConnect?.());
   socket.on('disconnect', () => handlers.onDisconnect?.());
+  socket.on('connect_error', (err) => handlers.onConnectError?.(err));
   socket.on('new_event', (ev) => handlers.onEvent?.(ev));
   socket.on('new_incident', (inc) => handlers.onIncident?.(inc));
   socket.on('risk_update', (data) => handlers.onRiskUpdate?.(data));

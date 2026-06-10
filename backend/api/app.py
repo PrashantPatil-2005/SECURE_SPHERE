@@ -27,12 +27,16 @@ for _root in (_here.parent, _here.parent.parent):
         sys.path.insert(0, str(_root))
         break
 
-from auth import auth_bp, token_required, role_required
+from auth import auth_bp, token_required, role_required, _decode_token
 from users_bp import users_bp
 from topology_checks import bp as topology_checks_bp
 from ai_endpoints import bp as ai_bp
 from engine_proxy import engine_proxy_bp
 from bff_proxy import bp as bff_proxy_bp
+from topology_routes import bp as topology_routes_bp
+from risk_routes import bp as risk_routes_bp
+from events_routes import bp as events_routes_bp
+from metrics_routes import bp as metrics_routes_bp
 from attack_simulator import SimulatorRuntime, detect_target_services_unreachable
 try:
     from audit import log_audit, query_audit
@@ -55,17 +59,7 @@ try:
 except ImportError:
     MITRE_MAP, TACTIC_ORDER = {}, []
 
-# --- Shared engine helpers (pg_connect / avg_mttd_seconds) ------------------
-# Docker copies engine/ → /app/; local path is backend/engine/.
-for _cand in (_here.parent, _here.parent.parent / "engine"):
-    if (_cand / "shared" / "pg_helpers.py").exists():
-        sys.path.insert(0, str(_cand))
-        break
-try:
-    from shared.pg_helpers import avg_mttd_seconds as _avg_mttd_from_postgres
-except ImportError:
-    def _avg_mttd_from_postgres():
-        return None
+# avg_mttd_seconds + redis data-service helpers now live in services.py.
 
 # ... (logging setup) ...
 
@@ -135,6 +129,10 @@ app.register_blueprint(topology_checks_bp)
 app.register_blueprint(ai_bp)
 app.register_blueprint(engine_proxy_bp)
 app.register_blueprint(bff_proxy_bp)
+app.register_blueprint(topology_routes_bp)
+app.register_blueprint(risk_routes_bp)
+app.register_blueprint(events_routes_bp)
+app.register_blueprint(metrics_routes_bp)
 
 # Rate-limit login route after blueprint registration
 try:
@@ -144,239 +142,21 @@ try:
 except Exception:
     pass
 
-# Redis Config
-REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
-REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+# Redis / data-service layer now lives in services.py (shared with blueprints).
+# Access mutable redis state via attribute (services.redis_client /
+# services.redis_available) so the live connection is always observed.
+import services
+from services import (
+    connect_redis,
+    get_events_from_redis,
+    get_all_events,
+    get_incidents,
+    get_risk_scores,
+    get_latest_summary,
+    calculate_metrics,
+)
+
 APP_PORT = int(os.getenv('PORT', os.getenv('BACKEND_PORT', 8000)))
-SERVER_START_TIME = datetime.utcnow()
-
-# Redis Connection
-redis_client = None
-redis_available = False
-
-def connect_redis():
-    global redis_client, redis_available
-    import sys
-    
-    retry_count = 0
-    while not redis_available:
-        try:
-            redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-            if redis_client.ping():
-                redis_available = True
-                logger.info(f"✅ Connected to Redis at {REDIS_HOST}:{REDIS_PORT} successfully.")
-        except redis.ConnectionError:
-            retry_count += 1
-            logger.warning(f"⏳ Redis not ready yet. Retrying in 2 seconds... (Attempt {retry_count})")
-            time.sleep(2)
-
-def _looks_like_ip(s: str) -> bool:
-    if not s or not isinstance(s, str):
-        return False
-    parts = s.split('.')
-    if len(parts) != 4:
-        return False
-    try:
-        return all(0 <= int(p) <= 255 for p in parts)
-    except ValueError:
-        return False
-
-# --- Helper Functions ---
-
-def get_events_from_redis(list_name, start=0, count=50):
-    if not redis_available: return []
-    try:
-        raw_events = redis_client.lrange(list_name, start, start + count - 1)
-        return [json.loads(e) for e in raw_events]
-    except Exception as e:
-        logger.error(f"Error reading {list_name}: {e}")
-        return []
-
-def get_all_events(limit=100):
-    if not redis_available: return []
-    # Merge events from all layers
-    network = get_events_from_redis("events:network", 0, limit)
-    api = get_events_from_redis("events:api", 0, limit)
-    auth = get_events_from_redis("events:auth", 0, limit)
-    
-    all_events = network + api + auth
-    # Sort by timestamp descending
-    all_events.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-    return all_events[:limit]
-
-def get_incidents(limit=50):
-    if not redis_available: return []
-    try:
-        raw = redis_client.lrange('incidents', 0, limit - 1)
-        return [json.loads(i) for i in raw]
-    except Exception as e:
-        logger.error(f"Error reading incidents: {e}")
-        return []
-
-def get_risk_scores():
-    if not redis_available: return {}
-    try:
-        raw = redis_client.hgetall('risk_scores_current')
-        return {k: json.loads(v) for k, v in raw.items()}
-    except Exception as e:
-        logger.error(f"Error reading risk scores: {e}")
-        return {}
-
-def get_latest_summary():
-    default_summary = {
-        "total_events_in_window": 0,
-        "events_by_layer": {"network": 0, "api": 0, "auth": 0},
-        "events_by_type": {},
-        "top_sources": {},
-        "active_incidents": 0,
-        "risk_scores": {},
-        "timestamp": datetime.utcnow().isoformat()
-    }
-    if not redis_available: return default_summary
-    try:
-        raw = redis_client.get('latest_summary')
-        return json.loads(raw) if raw else default_summary
-    except:
-        return default_summary
-
-def _events_in_last_seconds(events, seconds=60):
-    """Count events with timestamp inside the last N seconds."""
-    cutoff = datetime.utcnow() - timedelta(seconds=seconds)
-    n = 0
-    for e in events:
-        ts_str = e.get('timestamp')
-        if not ts_str:
-            continue
-        try:
-            ts = datetime.fromisoformat(str(ts_str).replace('Z', ''))
-            if ts >= cutoff:
-                n += 1
-        except Exception:
-            continue
-    return n
-
-
-def calculate_metrics():
-    metrics = {
-        "raw_events": {"network": 0, "api": 0, "auth": 0, "total": 0},
-        "correlated_incidents": 0,
-        "alert_reduction_percentage": 0,
-        "active_risk_entities": 0,
-        "events_by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
-        "events_by_type": defaultdict(int),
-        "system_uptime": str(datetime.utcnow() - SERVER_START_TIME),
-        "timestamp": datetime.utcnow().isoformat(),
-        # Additional flat fields consumed by AlertReductionCard
-        "total_raw_events": 0,
-        "total_incidents": 0,
-        "alert_reduction_ratio": 0.0,
-        "events_per_minute": 0.0,
-        "incidents_per_hour": 0.0,
-        "avg_mttd_seconds": None,
-        "detection_rate": 100.0,
-        "active_campaigns": 0,
-        "campaign_dedup_ratio": 0.0,
-        "churn_scenario_completeness": None,
-    }
-
-    if not redis_available: return metrics
-
-    try:
-        # Counts
-        metrics["raw_events"]["network"] = redis_client.llen('events:network')
-        metrics["raw_events"]["api"] = redis_client.llen('events:api')
-        metrics["raw_events"]["auth"] = redis_client.llen('events:auth')
-        metrics["raw_events"]["total"] = sum(metrics["raw_events"].values())
-
-        metrics["correlated_incidents"] = redis_client.llen('incidents')
-
-        if metrics["raw_events"]["total"] > 0:
-            metrics["alert_reduction_percentage"] = round(
-                (1 - metrics["correlated_incidents"] / metrics["raw_events"]["total"]) * 100, 1
-            )
-
-        # Risk Entities
-        risks = get_risk_scores()
-        metrics["active_risk_entities"] = len([r for r in risks.values() if r.get('current_score', 0) > 30])
-
-        # Severity & Types (Sample last 200 events)
-        sample = get_all_events(200)
-        for e in sample:
-            sev = e.get('severity', {}).get('level', 'low')
-            metrics["events_by_severity"][sev] += 1
-            metrics["events_by_type"][e.get('event_type', 'unknown')] += 1
-
-        # --- Flat KPI fields for AlertReductionCard -----------------------
-        total_raw = metrics["raw_events"]["total"]
-        total_inc = metrics["correlated_incidents"]
-        metrics["total_raw_events"] = total_raw
-        metrics["total_incidents"] = total_inc
-        metrics["alert_reduction_ratio"] = (
-            round((1 - total_inc / total_raw) * 100, 2) if total_raw > 0 else 0.0
-        )
-
-        # events per minute (last 60s across all layers)
-        epm_sample = get_all_events(500)
-        metrics["events_per_minute"] = round(_events_in_last_seconds(epm_sample, 60), 1)
-
-        # incidents per hour — simple uptime projection from raw count
-        uptime_sec = max((datetime.utcnow() - SERVER_START_TIME).total_seconds(), 1.0)
-        metrics["incidents_per_hour"] = round(total_inc * 3600 / uptime_sec, 2)
-
-        # average MTTD from Postgres kill_chains
-        avg_mttd = _avg_mttd_from_postgres()
-        if avg_mttd is not None:
-            metrics["avg_mttd_seconds"] = avg_mttd
-
-        # Campaign-level alert reduction (incidents collapsed into campaigns)
-        try:
-            import psycopg2
-            pg_url = os.getenv("DATABASE_URL")
-            if pg_url:
-                conn = psycopg2.connect(pg_url)
-            else:
-                conn = psycopg2.connect(
-                    host=os.getenv("POSTGRES_HOST", "database"),
-                    port=int(os.getenv("POSTGRES_PORT", 5432)),
-                    dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
-                    user=os.getenv("POSTGRES_USER", "securisphere_user"),
-                    password=os.getenv("POSTGRES_PASSWORD", ""),
-                )
-            with conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT COUNT(*) FROM campaigns WHERE status = 'active'")
-                    active_camps = int(cur.fetchone()[0])
-                    cur.execute("SELECT COALESCE(SUM(incident_count), 0) FROM campaigns")
-                    camp_incidents = int(cur.fetchone()[0])
-            conn.close()
-            metrics["active_campaigns"] = active_camps
-            if camp_incidents > 0 and total_inc > 0:
-                metrics["campaign_dedup_ratio"] = round(
-                    (1 - active_camps / max(total_inc, 1)) * 100, 1
-                )
-        except Exception:
-            pass
-
-    except Exception as e:
-        logger.error(f"Error calculating metrics: {e}")
-
-    return metrics
-
-def calculate_event_stats(events):
-    stats = {
-        "by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
-        "by_type": defaultdict(int),
-        "unique_sources": set()
-    }
-    for e in events:
-        sev = e.get('severity', {}).get('level', 'low')
-        if sev in stats["by_severity"]:
-            stats["by_severity"][sev] += 1
-        stats["by_type"][e.get('event_type', 'unknown')] += 1
-        stats["unique_sources"].add(e.get('source_entity', {}).get('ip'))
-    
-    stats["unique_sources"] = len(stats["unique_sources"])
-    return stats
 
 # --- Middleware ---
 
@@ -406,98 +186,21 @@ def health():
     return jsonify({
         "status": "healthy",
         "service": "securisphere-backend",
-        "redis_connected": redis_available,
+        "redis_connected": services.redis_available,
         "timestamp": datetime.utcnow().isoformat(),
         "version": "1.0.0"
     })
 
-@app.route('/api/dashboard/summary')
-@token_required
-def dashboard_summary():
-    metrics = calculate_metrics()
-    return jsonify({
-        "status": "success",
-        "data": {
-            "summary": get_latest_summary(),
-            "metrics": {
-                "raw_events": metrics["raw_events"],
-                "correlated_incidents": metrics["correlated_incidents"],
-                "alert_reduction_percentage": metrics["alert_reduction_percentage"],
-                "active_threats": metrics["active_risk_entities"],
-                "critical_events": metrics["events_by_severity"]["critical"]
-            },
-            "recent_incidents": get_incidents(5),
-            "risk_scores": get_risk_scores(),
-            "events_by_layer": metrics["raw_events"], # simplified
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    })
+# DASHBOARD / METRICS / SYSTEM / DEMO-STATUS routes live in metrics_routes.py blueprint.
 
-@app.route('/api/events')
-@token_required
-def get_events():
-    layer = request.args.get('layer', 'all')
-    limit = min(int(request.args.get('limit', 50)), 500)
-    severity = request.args.get('severity', 'all')
-    ev_type = request.args.get('event_type')
-    
-    if layer == 'all':
-        events = get_all_events(limit) # This limits first, then filters. Might need optimization for deep filtering
-        # Optimize: get more then filter? For now, fetch limit*2 to allow some filtering space
-        if severity != 'all' or ev_type:
-            events = get_all_events(limit * 5) 
-    else:
-        events = get_events_from_redis(f"events:{layer}", 0, limit * 5)
-        
-    # Filtering
-    filtered = []
-    for e in events:
-        if severity != 'all' and e.get('severity', {}).get('level') != severity:
-            continue
-        if ev_type and e.get('event_type') != ev_type:
-            continue
-        filtered.append(e)
-        
-    # Apply limit after filtering
-    final_events = filtered[:limit]
-    
-    return jsonify({
-        "status": "success",
-        "data": {
-            "events": final_events,
-            "count": len(final_events),
-            "total_available": {
-                "network": redis_client.llen("events:network") if redis_available else 0,
-                "api": redis_client.llen("events:api") if redis_available else 0,
-                "auth": redis_client.llen("events:auth") if redis_available else 0
-            },
-            "filters_applied": {
-                "layer": layer,
-                "severity": severity,
-                "event_type": ev_type,
-                "limit": limit
-            },
-            "stats": calculate_event_stats(final_events)
-        }
-    })
-
-@app.route('/api/events/<event_id>')
-@token_required
-def get_single_event(event_id):
-    # Search in all lists (expensive but necessary without index)
-    # Optimization: Search recent 1000 first
-    all_ev = get_all_events(1000)
-    for e in all_ev:
-        if e.get('event_id') == event_id:
-            return jsonify({"status": "success", "data": {"event": e}})
-    return jsonify({"status": "error", "message": "Event not found"}), 404
+# EVENT routes (/api/events*) live in events_routes.py blueprint.
 
 def _read_incident_status_redis(incident_id):
     """Return (status, note, updated_at) from Redis hash, or (None, None, None)."""
-    if not redis_available or not incident_id:
+    if not services.redis_available or not incident_id:
         return None, None, None
     try:
-        raw = redis_client.hgetall(f"incident_status:{incident_id}")
+        raw = services.redis_client.hgetall(f"incident_status:{incident_id}")
         if not raw:
             return None, None, None
         return raw.get('status'), raw.get('note'), raw.get('updated_at')
@@ -507,9 +210,9 @@ def _read_incident_status_redis(incident_id):
 
 def _write_incident_status_redis(incident_id, status, note):
     updated_at = datetime.utcnow().isoformat()
-    if redis_available:
+    if services.redis_available:
         try:
-            redis_client.hset(
+            services.redis_client.hset(
                 f"incident_status:{incident_id}",
                 mapping={
                     "status": status,
@@ -578,7 +281,7 @@ def list_incidents():
         "data": {
             "incidents": incidents,
             "count": len(incidents),
-            "total_available": redis_client.llen("incidents") if redis_available else 0
+            "total_available": services.redis_client.llen("incidents") if services.redis_available else 0
         }
     })
 
@@ -596,202 +299,11 @@ def get_incident(incident_id):
             return jsonify({"status": "success", "data": {"incident": i}})
     return jsonify({"status": "error", "message": "Incident not found"}), 404
 
-@app.route('/api/risk-scores')
-@token_required
-def list_risk_scores():
-    risks = get_risk_scores()
+# RISK-SCORE routes (/api/risk-scores, /api/v2/risk/accounts) live in risk_routes.py blueprint.
 
-    # Normalise each entry so callers can rely on `entity` / `entity_type`
-    # regardless of whether the key is a service name or a fallback IP.
-    normalised = {}
-    for key, r in risks.items():
-        entity_type = r.get('entity_type') or ('service' if not _looks_like_ip(key) else 'ip')
-        normalised[key] = {
-            **r,
-            "entity":      r.get('entity') or key,
-            "entity_type": entity_type,
-            "source_ip":   r.get('source_ip') or (key if entity_type == 'ip' else None),
-        }
+# EVENT clear/latest routes live in events_routes.py blueprint.
 
-    summary = {
-        "total_entities":   len(normalised),
-        "service_count":    sum(1 for v in normalised.values() if v["entity_type"] == "service"),
-        "ip_count":         sum(1 for v in normalised.values() if v["entity_type"] == "ip"),
-        "critical_count":   0,
-        "threatening_count":0,
-        "suspicious_count": 0,
-        "normal_count":     0,
-    }
-
-    for r in normalised.values():
-        score = r.get('current_score', 0)
-        if score >= 90: summary["critical_count"] += 1
-        elif score >= 70: summary["threatening_count"] += 1
-        elif score >= 30: summary["suspicious_count"] += 1
-        else: summary["normal_count"] += 1
-
-    return jsonify({
-        "status": "success",
-        "data": {
-            "risk_scores": normalised,
-            "summary": summary
-        }
-    })
-
-@app.route('/api/risk-scores/<ip>')
-@token_required
-def get_ip_risk(ip):
-    risks = get_risk_scores()
-    if ip in risks:
-        return jsonify({"status": "success", "data": risks[ip]})
-    return jsonify({"status": "error", "message": "Risk score not found"}), 404
-
-@app.route('/api/metrics')
-@token_required
-def system_metrics():
-    return jsonify({
-        "status": "success", 
-        "data": calculate_metrics()
-    })
-
-@app.route('/api/metrics/timeline')
-@token_required
-def metrics_timeline():
-    # Mocking timeline for now as we don't have time-series DB
-    # In real impl, we would bucket recent events
-    minutes = int(request.args.get('minutes', 30))
-    events = get_all_events(500) # Get recent
-    
-    timeline = defaultdict(lambda: {"timestamp": "", "network": 0, "api": 0, "auth": 0, "total": 0})
-    now = datetime.utcnow()
-    
-    # Init buckets
-    for i in range(minutes):
-        t = (now - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M:00Z")
-        timeline[t]["timestamp"] = t
-        
-    for e in events:
-        ts_str = e.get('timestamp')
-        if ts_str:
-            try:
-                # Truncate to minute
-                ts = datetime.fromisoformat(ts_str.replace('Z', ''))
-                key = ts.strftime("%Y-%m-%dT%H:%M:00Z")
-                if key in timeline:
-                    layer = e.get('source_layer', 'other')
-                    timeline[key][layer] += 1
-                    timeline[key]['total'] += 1
-            except:
-                pass
-                
-    return jsonify({
-        "status": "success",
-        "data": {
-            "timeline": sorted([v for v in timeline.values()], key=lambda x: x['timestamp']),
-            "time_range": {"minutes": minutes}
-        }
-    })
-
-@app.route('/api/events/latest')
-@token_required
-def latest_events():
-    return jsonify({
-        "status": "success",
-        "data": {
-            "latest": {
-                "network": (get_events_from_redis("events:network", 0, 1) or [None])[0],
-                "api": (get_events_from_redis("events:api", 0, 1) or [None])[0],
-                "auth": (get_events_from_redis("events:auth", 0, 1) or [None])[0]
-            }
-        }
-    })
-
-@app.route('/api/events/clear', methods=['POST'])
-@token_required
-@role_required('admin')
-def clear_events():
-    if redis_available:
-        redis_client.delete("events:network", "events:api", "events:auth", "incidents", "risk_scores_current", "latest_summary")
-    
-    # Also clear PostgreSQL incidents (kill_chains)
-    try:
-        import psycopg2
-        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "database"),
-            port=int(os.getenv("POSTGRES_PORT", 5432)),
-            dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
-            user=os.getenv("POSTGRES_USER", "securisphere_user"),
-            password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
-        )
-        with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE kill_chains RESTART IDENTITY")
-            conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Error clearing PostgreSQL kill_chains: {e}")
-
-    return jsonify({
-        "status": "success", 
-        "message": "All events and incidents cleared (Redis + Postgres)",
-        "timestamp": datetime.utcnow().isoformat()
-    })
-
-@app.route('/api/system/status')
-@token_required
-def system_status():
-    status = {
-        "redis": {"connected": redis_available},
-        "monitors": {},
-        "correlation_engine": {"active": False, "incidents": 0},
-        "total_events": 0,
-        "uptime_seconds": (datetime.utcnow() - SERVER_START_TIME).seconds
-    }
-
-    if redis_available:
-        status["redis"]["ping"] = "PONG"
-
-        # Per-monitor liveness: count + latest-event freshness (<=120s => active)
-        monitors = ["network", "api", "auth", "browser"]
-        now_ts = datetime.utcnow()
-        for m in monitors:
-            last_list = get_events_from_redis(f"events:{m}", 0, 1) or []
-            last = last_list[0] if last_list else {}
-            last_ts_raw = last.get('timestamp') if isinstance(last, dict) else None
-            fresh = False
-            if last_ts_raw:
-                try:
-                    s = str(last_ts_raw)
-                    dt = datetime.fromisoformat(s.replace('Z', '+00:00')) if ('Z' in s or '+' in s[10:]) else datetime.fromisoformat(s)
-                    age = (now_ts - dt.replace(tzinfo=None)).total_seconds()
-                    fresh = age <= 120
-                except Exception:
-                    fresh = False
-            count = redis_client.llen(f"events:{m}")
-            status["monitors"][m] = {
-                "active": bool(fresh or count > 0),
-                "last_event": last_ts_raw,
-                "event_count": count,
-            }
-            status["total_events"] += count
-
-        status["correlation_engine"]["incidents"] = redis_client.llen("incidents")
-
-    # Ping correlation engine /health (container DNS name)
-    try:
-        engine_url = os.getenv("SECURISPHERE_ENGINE_URL", "http://correlation-engine:5070")
-        r = requests.get(f"{engine_url}/engine/health", timeout=1.5)
-        if r.ok:
-            body = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
-            status["correlation_engine"]["active"] = True
-            status["correlation_engine"]["uptime"] = body.get("uptime") or body.get("uptime_seconds")
-        else:
-            status["correlation_engine"]["active"] = False
-            status["correlation_engine"]["error"] = f"HTTP {r.status_code}"
-    except Exception as e:
-        status["correlation_engine"]["active"] = False
-        status["correlation_engine"]["error"] = str(e)[:120]
-
-    return jsonify({"status": "success", "data": status})
+# SYSTEM STATUS route lives in metrics_routes.py blueprint.
 
 # ============================================================
 # WAF / Reverse-proxy configuration
@@ -1058,9 +570,34 @@ def handle_exception(e):
 
 # --- WebSocket ---
 
+# WebSocket auth: by default every Socket.IO handshake must present a valid
+# access JWT (handshake `auth: {token}` or `?token=` query param). This mirrors
+# the REST `@token_required` hardening so the realtime channel can't be tapped
+# anonymously. For local demos only, set ALLOW_WS_ANONYMOUS=1 (ignored in prod).
+def _ws_extract_token(auth):
+    if isinstance(auth, dict):
+        tok = auth.get('token') or auth.get('access_token')
+        if tok:
+            return tok.replace('Bearer ', '').strip()
+    # Fallbacks: Authorization header or query string on the handshake request.
+    hdr = request.headers.get('Authorization', '')
+    if hdr.startswith('Bearer '):
+        return hdr[7:].strip()
+    return (request.args.get('token') or '').strip()
+
+
 @socketio.on('connect')
-def ws_connect():
-    logger.info(f"[WS] Client connected: {request.sid}")
+def ws_connect(auth=None):
+    allow_anon = (not IS_PRODUCTION) and os.getenv('ALLOW_WS_ANONYMOUS', '0') == '1'
+    token = _ws_extract_token(auth)
+    payload = _decode_token(token) if token else None
+
+    if payload is None and not allow_anon:
+        logger.warning("[WS] Rejected unauthenticated connection: %s", request.sid)
+        return False  # reject the handshake
+
+    user = payload.get('username') if payload else 'anonymous'
+    logger.info(f"[WS] Client connected: {request.sid} (user={user})")
     # Send initial state
     emit('initial_state', {
         "summary": get_latest_summary(),
@@ -1090,7 +627,7 @@ def redis_subscriber():
     # Separate connection for PubSub
     while True:
         try:
-            r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+            r = redis.Redis(host=services.REDIS_HOST, port=services.REDIS_PORT, decode_responses=True)
             pubsub = r.pubsub()
             pubsub.subscribe(
                 "security_events", "correlated_incidents", "risk_scores",
@@ -1132,73 +669,7 @@ def periodic_metrics():
         except Exception as e:
             logger.error(f"Metrics thread error: {e}")
 
-# ============================================================
-# TOPOLOGY  (/api/topology)
-# ============================================================
-
-@app.route('/api/topology')
-@token_required
-def get_topology():
-    """
-    Proxy the live service-dependency graph from the topology-collector.
-    Falls back to a static description if the collector is not reachable.
-    """
-    try:
-        resp = requests.get('http://topology-collector:5080/topology/graph', timeout=3)
-        if resp.status_code == 200:
-            return jsonify({"status": "success", "data": resp.json()})
-    except Exception:
-        pass  # fall through to static fallback
-
-    # Static fallback: return known services without live enrichment
-    static_nodes = [
-        {"service_name": svc, "status": "unknown", "threat_level": "normal",
-         "container_id": "", "container_name": svc, "image": "",
-         "network_aliases": [], "exposed_ports": [], "labels": {}, "ip_addresses": {},
-         "last_seen": datetime.utcnow().isoformat() + "Z"}
-        for svc in [
-            "redis", "database", "api-server", "auth-service",
-            "network-monitor", "api-monitor", "auth-monitor",
-            "backend", "dashboard", "correlation-engine", "web-app",
-            "topology-collector",
-        ]
-    ]
-    static_edges = [
-        {"source": "api-server",    "target": "redis",       "edge_type": "event_bus"},
-        {"source": "auth-service",  "target": "redis",       "edge_type": "event_bus"},
-        {"source": "api-monitor",   "target": "api-server",  "edge_type": "monitors"},
-        {"source": "auth-monitor",  "target": "auth-service","edge_type": "monitors"},
-        {"source": "backend",       "target": "redis",       "edge_type": "event_bus"},
-        {"source": "dashboard",     "target": "backend",     "edge_type": "api"},
-        {"source": "web-app",       "target": "api-server",  "edge_type": "proxy"},
-        {"source": "web-app",       "target": "auth-service","edge_type": "proxy"},
-        {"source": "correlation-engine","target":"redis",    "edge_type": "event_bus"},
-    ]
-    return jsonify({
-        "status": "success",
-        "data": {
-            "nodes": static_nodes,
-            "edges": static_edges,
-            "last_updated": datetime.utcnow().isoformat() + "Z",
-            "total_services": len(static_nodes),
-            "note": "topology-collector unavailable; static fallback returned",
-        }
-    })
-
-
-@app.route('/api/topology/service/<service_name>')
-@token_required
-def get_topology_service(service_name):
-    """Proxy a single service lookup from the topology-collector."""
-    try:
-        resp = requests.get(
-            f'http://topology-collector:5080/topology/service/{service_name}', timeout=3
-        )
-        if resp.status_code == 200:
-            return jsonify({"status": "success", "data": resp.json()})
-        return jsonify({"status": "error", "message": "Service not found"}), 404
-    except Exception as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 503
+# TOPOLOGY routes (/api/topology) live in topology_routes.py blueprint.
 
 
 # ============================================================
@@ -1448,8 +919,8 @@ def update_incident_status(incident_id):
                     if status == 'suppressed':
                         cur.execute("SELECT source_ip FROM kill_chains WHERE incident_id = %s", (incident_id,))
                         row = cur.fetchone()
-                        if row and row[0] and redis_available:
-                            redis_client.setex(f"suppressed:{row[0]}", 1800, "1")
+                        if row and row[0] and services.redis_available:
+                            services.redis_client.setex(f"suppressed:{row[0]}", 1800, "1")
             conn.close()
         except Exception as exc:
             logger.warning("postgres status mirror failed: %s", exc)
@@ -1503,19 +974,7 @@ def get_incident_status(incident_id):
 # DEMO STATUS  (/api/demo-status)
 # ============================================================
 
-@app.route('/api/demo-status')
-@token_required
-def demo_status():
-    """Return whether a demo scenario is currently running."""
-    try:
-        active_val = redis_client.get('demo:active') if redis_available else None
-        scenario_val = redis_client.get('demo:scenario') if redis_available else None
-        return jsonify({"status": "success", "data": {
-            "active": active_val is not None,
-            "scenario": scenario_val if isinstance(scenario_val, str) else (scenario_val.decode() if scenario_val else None)
-        }})
-    except Exception as e:
-        return jsonify({"status": "success", "data": {"active": False, "scenario": None}})
+# DEMO STATUS route lives in metrics_routes.py blueprint.
 
 
 # ============================================================
@@ -1565,9 +1024,9 @@ def mitre_mapping():
         pass
 
     # Optional Redis hash `mitre_hits` — reserved for future direct writes
-    if redis_available:
+    if services.redis_available:
         try:
-            redis_hits = redis_client.hgetall("mitre_hits") or {}
+            redis_hits = services.redis_client.hgetall("mitre_hits") or {}
             for tech, hits in redis_hits.items():
                 try:
                     hit_counts[tech] = max(hit_counts[tech], int(hits))
@@ -1735,91 +1194,7 @@ def mitre_coverage_v2():
     })
 
 
-# ============================================================
-# ACCOUNT RISK  (/api/v2/risk/accounts)
-# ============================================================
-#
-# Per-user risk summary built from correlated_incidents grouped by
-# target_username. Returns up to 100 accounts ordered by recent activity.
-# Severity is the worst label seen across each account's incidents.
-
-_SEV_RANK = {"info": 0, "low": 0, "medium": 1, "high": 2, "critical": 3}
-
-
-def _worst_severity(values):
-    best = None
-    best_rank = -1
-    for v in values:
-        r = _SEV_RANK.get(str(v or "").lower(), 0)
-        if r > best_rank:
-            best, best_rank = v, r
-    return best or "high"
-
-
-@app.route('/api/v2/risk/accounts')
-@token_required
-def risk_accounts_v2():
-    """Group incidents by target_username and return per-user risk summaries."""
-    rows = []
-    try:
-        import psycopg2
-        import psycopg2.extras
-        conn = psycopg2.connect(os.getenv("DATABASE_URL")) if os.getenv("DATABASE_URL") else psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "database"),
-            port=int(os.getenv("POSTGRES_PORT", 5432)),
-            dbname=os.getenv("POSTGRES_DB", "securisphere_db"),
-            user=os.getenv("POSTGRES_USER", "securisphere_user"),
-            password=os.getenv("POSTGRES_PASSWORD", "securisphere_pass_2024"),
-        )
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT
-                    target_username AS username,
-                    COUNT(*)        AS incident_count,
-                    MAX(created_at) AS last_seen,
-                    ARRAY_AGG(severity) AS severities
-                  FROM correlated_incidents
-                 WHERE target_username IS NOT NULL AND target_username <> ''
-                 GROUP BY target_username
-                 ORDER BY last_seen DESC NULLS LAST
-                 LIMIT 100
-                """
-            )
-            for r in cur.fetchall():
-                ts = r.get("last_seen")
-                rows.append({
-                    "username":         r["username"],
-                    "incident_count":   int(r.get("incident_count") or 0),
-                    "highest_severity": _worst_severity(r.get("severities") or []),
-                    "last_seen":        ts.isoformat() if hasattr(ts, "isoformat") else ts,
-                })
-        conn.close()
-    except Exception as exc:
-        # Fall back to the in-memory Redis incident list so the panel still
-        # shows something on a fresh stack with no PG persistence yet.
-        logger.debug("account risk PG path failed, using Redis fallback: %s", exc)
-        agg = {}
-        for inc in get_incidents(200):
-            u = inc.get("target_username")
-            if not u:
-                continue
-            entry = agg.setdefault(u, {"incident_count": 0, "severities": [], "last_seen": None})
-            entry["incident_count"] += 1
-            entry["severities"].append(inc.get("severity"))
-            ts = inc.get("timestamp") or inc.get("created_at")
-            if ts and (entry["last_seen"] is None or ts > entry["last_seen"]):
-                entry["last_seen"] = ts
-        for u, e in agg.items():
-            rows.append({
-                "username":         u,
-                "incident_count":   e["incident_count"],
-                "highest_severity": _worst_severity(e["severities"]),
-                "last_seen":        e["last_seen"],
-            })
-        rows.sort(key=lambda r: r.get("last_seen") or "", reverse=True)
-
-    return jsonify({"status": "success", "data": rows})
+# ACCOUNT RISK routes (/api/v2/risk/accounts) live in risk_routes.py blueprint.
 
 
 # ============================================================
@@ -2327,7 +1702,7 @@ def campaigns_stats():
 def get_discord_config():
     try:
         # Fetch from Redis key 'config:discord_webhook'
-        url = redis_client.get('config:discord_webhook')
+        url = services.redis_client.get('config:discord_webhook')
         return jsonify({
             "status": "success", 
             "url": url if url else "" 
@@ -2349,10 +1724,10 @@ def set_discord_config():
             if not (url.startswith("https://discord.com/api/webhooks/")
                     or url.startswith("https://discordapp.com/api/webhooks/")):
                 return jsonify({"status": "error", "message": "Only Discord HTTPS webhook URLs are accepted"}), 400
-            redis_client.set('config:discord_webhook', url)
+            services.redis_client.set('config:discord_webhook', url)
         else:
             # If empty string provided, delete the key (disable feature)
-            redis_client.delete('config:discord_webhook')
+            services.redis_client.delete('config:discord_webhook')
             
         return jsonify({"status": "success", "message": "Configuration saved"})
     except Exception as e:
@@ -2405,7 +1780,7 @@ def _get_simulator():
     global _simulator_runtime
     if _simulator_runtime is None:
         _simulator_runtime = SimulatorRuntime(
-            redis_client=redis_client if redis_available else None,
+            redis_client=services.redis_client if services.redis_available else None,
             socketio=socketio,
             log_cb=_attack_append,
         )
@@ -2664,7 +2039,7 @@ if __name__ == '__main__':
     print("========================================")
     print(f"  REST API:   http://0.0.0.0:{APP_PORT}")
     print(f"  WebSocket:  ws://0.0.0.0:{APP_PORT}")
-    print(f"  Redis:      {REDIS_HOST}:{REDIS_PORT}")
+    print(f"  Redis:      {services.REDIS_HOST}:{services.REDIS_PORT}")
     print("========================================")
 
     if IS_PRODUCTION:

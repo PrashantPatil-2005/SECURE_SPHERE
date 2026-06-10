@@ -5,6 +5,8 @@ from datetime import datetime
 from ai.client import generate_completion, stream_completion
 from ai.prompts import CHAT_SYSTEM_PROMPT, POST_INCIDENT_REPORT_PROMPT
 from auth import token_required
+import services
+from services import get_incidents, get_risk_scores, get_all_events
 
 bp = Blueprint('ai', __name__, url_prefix='/api/ai')
 
@@ -13,11 +15,10 @@ bp = Blueprint('ai', __name__, url_prefix='/api/ai')
 def get_thought_stream():
     # Fetch recent AI commentary from Redis
     try:
-        from app import redis_client, redis_available
-        if not redis_available:
+        if not services.redis_available:
             return jsonify({"stream": []})
-        
-        raw_stream = redis_client.lrange("ai_thought_stream_history", 0, 10)
+
+        raw_stream = services.redis_client.lrange("ai_thought_stream_history", 0, 10)
         stream = [json.loads(s) for s in raw_stream]
         return jsonify({"stream": stream})
     except Exception as e:
@@ -30,8 +31,6 @@ def chat():
     user_msg = data.get('message', '')
     if not user_msg:
         return jsonify({"error": "Message is required"}), 400
-
-    from app import get_incidents, get_risk_scores, get_all_events
 
     # Gather live context
     active_incidents = get_incidents(limit=5)
@@ -62,7 +61,6 @@ def chat():
 @bp.route('/report/<incident_id>', methods=['POST'])
 @token_required
 def generate_report(incident_id):
-    from app import get_incidents
     # Fetch incident
     incidents = get_incidents(limit=100)
     incident = next((i for i in incidents if i.get("incident_id") == incident_id), None)

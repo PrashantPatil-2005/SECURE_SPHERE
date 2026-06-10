@@ -126,6 +126,14 @@ export function useRealtime() {
           incidentPollRef.current = setInterval(fetchIncidents, 5000);
         }
       },
+      onConnectError: () => {
+        // Rejected handshake (e.g. missing/expired token) or transport error.
+        // Keep the UI alive via the same REST polling fallback as a disconnect.
+        setConnected(false);
+        if (!incidentPollRef.current) {
+          incidentPollRef.current = setInterval(fetchIncidents, 5000);
+        }
+      },
       onEvent: (ev) => {
         setEvents(prev => [ev, ...prev].slice(0, MAX_EVENTS));
         setTopology(prev => mergeEventIntoTopology(prev, ev));
