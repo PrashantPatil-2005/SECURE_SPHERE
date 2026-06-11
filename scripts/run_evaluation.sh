@@ -21,7 +21,7 @@ INTEGRATION_RESULT=$?
 
 echo ""
 echo "[3] Running full evaluation..."
-python evaluation/run_evaluation.py
+python backend/evaluation/run_evaluation.py
 EVAL_RESULT=$?
 
 echo ""

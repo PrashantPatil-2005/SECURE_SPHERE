@@ -3,6 +3,31 @@ description: C1 churn — restart auth-service mid-attack; service identity pres
 claim: C1
 settle_timeout: 15
 expected_chain: [reconnaissance, exploitation, lateral_movement, exfiltration]
+expected_kill_chain_steps:
+  - event_type: port_scan
+    source_service_name: attacker-pod
+    destination_service_name: api-server
+    attack_stage: reconnaissance
+  - event_type: sql_injection_attempt
+    source_service_name: attacker-pod
+    destination_service_name: api-server
+    attack_stage: exploitation
+  - event_type: brute_force
+    source_service_name: attacker-pod
+    destination_service_name: auth-service
+    attack_stage: exploitation
+  - event_type: suspicious_login
+    source_service_name: attacker-pod
+    destination_service_name: auth-service
+    attack_stage: exploitation
+  - event_type: lateral_movement
+    source_service_name: attacker-pod
+    destination_service_name: database
+    attack_stage: lateral_movement
+  - event_type: data_exfiltration
+    source_service_name: attacker-pod
+    destination_service_name: external
+    attack_stage: exfiltration
 churn:
   - action: restart_service
     service: auth-service

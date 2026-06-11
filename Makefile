@@ -405,6 +405,42 @@ ci: ## Smoke test + fast attack + verify incidents were detected (CI pipeline)
 verify-phase5: ## Verify Phase 5 (Demo & Polish) implementation is complete
 	@bash scripts/verify_phase5.sh
 
+# ─── v2.0 Research Experiments ─────────────────────────────────────────────
+
+SEED ?= 42
+TRIALS ?= 100
+N ?= 500
+
+reset-state: ## Clear Postgres incidents, Redis streams, engine buffers (idempotent)
+	python -m evaluation.lib.reset_state --seed $(SEED)
+
+run-c1: ## Track 1 — C1 churn resilience (H1)
+	python scripts/churn_experiment.py --mode both --seed $(SEED)
+	python evaluation/report_c1_comparison.py
+
+run-benchmark: ## Track 2 — Throughput / latency (E3)
+	python benchmarks/load_test.py --seed $(SEED)
+
+run-brier: ## Track 3 — Bayesian calibration (H4) [stub: extend run_evaluation.py]
+	@echo "Track 3: run backend/evaluation/run_evaluation.py --brier (not yet wired)"
+	python backend/evaluation/run_evaluation.py --mode named
+
+run-baselines: ## Track 4 — Comparative baselines [stub]
+	@echo "Track 4: baseline_runner.py + falco — not yet implemented"
+
+run-adversarial: ## Track 6 — Adversarial evasion suite [stub]
+	@echo "Track 6: scripts/adversarial/* — not yet implemented"
+
+run-evaluation: reset-state ## Core experiments in sequence (v1.5 artifact subset)
+	$(MAKE) run-c1 SEED=$(SEED)
+	$(MAKE) run-benchmark SEED=$(SEED)
+
+generate-tables: ## Track 7 — LaTeX tables from latest results
+	python evaluation/report_c1_comparison.py
+
+train-tgnn: ## Track 8 — TGNN training pipeline [stub]
+	@echo "Track 8: chain_generator + train_tgnn — not yet implemented"
+
 # ─── Browser Monitor (Phase 1 → wired in Phase 3) ───────────────────────────
 
 build-browser-monitor: ## Build the browser-monitor image
