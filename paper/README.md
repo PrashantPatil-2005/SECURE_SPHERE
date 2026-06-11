@@ -1,52 +1,44 @@
-# SecuriSphere — Research Paper Scaffold
+# SecuriSphere IEEE Paper
 
-This directory hosts the in-progress paper that accompanies the
-SecuriSphere project. It is **scaffolding** — sections are stubbed with the
-intended argument and the experiments that would back it. We do not ship
-fabricated numbers; results sections are empty until the corresponding
-benchmark in `/benchmarks` produces them.
+## Main file
 
-## Working title
+`securisphere.tex` — complete IEEE conference draft (~5–6 pages when compiled).
 
-> **Service-Identity Correlation Survives Container Churn:
-> A Kill-Chain Reconstruction System for Microservice Telemetry**
+## Compile locally
 
-## Why this paper exists (the gap)
+```bash
+cd paper
+pdflatex securisphere.tex
+pdflatex securisphere.tex
+```
 
-SIEMs and runtime-security tools (Falco, Wazuh, Cilium-Tetragon, Elastic
-SIEM) correlate by IP, hostname, or PID. In a containerised microservice
-environment IPs change on every redeploy, so cross-event correlation
-breaks the moment a container restarts. SecuriSphere correlates on
-**service name** — the only identifier that survives churn — and
-reconstructs full kill chains across that identifier.
+Requires a LaTeX distribution with `IEEEtran` (TeX Live, MiKTeX, or Overleaf).
 
-Three claims we want to support empirically:
+## Overleaf
 
-1. **C1 — Correctness under churn:** detection MTTD remains stable when
-   containers are forcibly redeployed mid-attack. IP-correlation baselines
-   degrade.
-2. **C2 — Cross-layer reconstruction:** browser-layer and network-layer
-   events that share a service name produce a single coherent chain.
-3. **C3 — Topology-drift catches supply-chain compromise:** the
-   neighbour-fingerprint signal flags silently-replaced services that
-   pure runtime detectors miss.
+1. Create project from **IEEE Conference Template**
+2. Replace `main.tex` body with `securisphere.tex` contents
+3. Upload figures to `figures/` when ready and replace `\figplaceholder{...}` with `\includegraphics`
 
-## Structure
+## Figures to add later
 
-| File | Section |
-| --- | --- |
-| `sections/00_abstract.md`     | Abstract |
-| `sections/01_introduction.md` | Introduction + problem statement |
-| `sections/02_related.md`      | Related work (Falco, Wazuh, Cilium, Elastic SIEM, MITRE Engenuity) |
-| `sections/03_threat_model.md` | Threat model + assumptions |
-| `sections/04_design.md`       | Architecture + service-identity correlation |
-| `sections/05_evaluation.md`   | Methodology + the three claims |
-| `sections/06_results.md`      | (empty until `/benchmarks` produces numbers) |
-| `sections/07_limitations.md`  | What we cannot claim |
-| `sections/08_future.md`       | TGNN, eBPF integration, federated detection |
+| Figure | File (suggested) | Section |
+|--------|------------------|---------|
+| Fig. 1 — Architecture | `figures/architecture.pdf` | §III-B |
+| Fig. 2 — Workflow | `figures/workflow.pdf` | §III-C |
+| Fig. 3 — SICA pipeline | `figures/sica_pipeline.pdf` | §IV-D |
+| Fig. 4 — Completeness chart | `figures/completeness.pdf` | §V |
 
-## How figures get built
+## Results
 
-Figures are generated from `/benchmarks/results/*.json` — never hand-drawn.
-A figure that doesn't have a regenerator script in this repo doesn't
-appear in the paper. That keeps the paper honest about what is measured.
+Tables III–IV use `--` placeholders. After running evaluation:
+
+```bash
+make run-evaluation   # when implemented
+```
+
+Replace placeholder cells in `securisphere.tex` with measured values.
+
+## References
+
+22 IEEE-style references are embedded in `\begin{thebibliography}`. No external `.bib` required for this draft.
