@@ -13,6 +13,7 @@ export function StatCard({ label, value, icon: Icon, color = 'accent', sub, puls
   };
 
   const c = colorMap[color] || colorMap.accent;
+  const valueColor = c.text === 'text-base-400' ? 'text-base-100' : c.text;
 
   return (
     <div
@@ -23,7 +24,6 @@ export function StatCard({ label, value, icon: Icon, color = 'accent', sub, puls
         className
       )}
     >
-      {/* soft accent glow in corner */}
       <div
         className={cn(
           'pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-500 group-hover:opacity-70',
@@ -31,33 +31,33 @@ export function StatCard({ label, value, icon: Icon, color = 'accent', sub, puls
         )}
       />
 
-      <div className="relative mb-3 flex items-center gap-2">
+      <div className="relative mb-3 flex items-center gap-2.5">
         {Icon && (
           <div
             className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3',
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
               c.bg
             )}
           >
             <Icon className={cn('h-4 w-4', c.text)} />
           </div>
         )}
-        <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-base-400">{label}</span>
+        <span className="type-eyebrow leading-none">{label}</span>
       </div>
 
-      <div
-        className={cn(
-          'relative mb-1.5 text-3xl font-semibold leading-none tracking-tight',
-          c.text === 'text-base-400' ? 'text-base-100' : c.text
-        )}
-      >
+      <div className={cn('type-metric relative mb-1', valueColor)}>
         {value}
         {pulse && (
-          <span className={cn('ml-2 inline-block h-1.5 w-1.5 animate-pulse-glow align-middle rounded-full', c.bg.replace('/10', '/80'))} />
+          <span
+            className={cn(
+              'ml-2 inline-block h-1.5 w-1.5 animate-pulse-glow align-middle rounded-full',
+              c.bg.replace('/10', '/80')
+            )}
+          />
         )}
       </div>
 
-      {sub && <div className="relative text-xs text-base-500">{sub}</div>}
+      {sub && <div className="type-caption relative mt-1">{sub}</div>}
     </div>
   );
 }

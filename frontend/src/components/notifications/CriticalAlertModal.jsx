@@ -230,7 +230,7 @@ export default function CriticalAlertModal({ incidents = [] }) {
                 </button>
                 <button
                   onClick={inspect}
-                  className="flex-1 h-9 rounded-lg bg-accent text-sm font-semibold text-base-950 hover:bg-accent-hover transition-colors"
+                  className="flex-1 h-9 rounded-lg bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
                 >
                   Acknowledge
                 </button>

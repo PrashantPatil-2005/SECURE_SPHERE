@@ -258,17 +258,20 @@ export default function Audit() {
               <option value="critical">critical</option>
             </Select>
             <Input
+              mono
               type="datetime-local"
               value={filters.from}
               onChange={(e) => updateFilter('from', e.target.value)}
             />
             <Input
+              mono
               type="datetime-local"
               value={filters.to}
               onChange={(e) => updateFilter('to', e.target.value)}
             />
             <div className="flex items-center gap-2">
               <Input
+                mono
                 type="number"
                 min={1}
                 max={500}

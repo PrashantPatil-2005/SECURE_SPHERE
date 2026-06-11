@@ -368,7 +368,7 @@ function IncidentCard({ inc, onReplay, replaying, onStatusChange }) {
           <div className="border-t border-base-800 pt-4">
             <div className="flex justify-between items-center mb-2">
               <div className="text-[10px] uppercase tracking-wider font-semibold text-base-500">AI Incident Report</div>
-              <Button size="sm" variant="outline" onClick={handleGenerateReport} disabled={generatingReport}>
+              <Button size="sm" variant="secondary" onClick={handleGenerateReport} disabled={generatingReport}>
                 {generatingReport ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <FileText className="w-3 h-3 mr-1" />}
                 {generatingReport ? 'Generating...' : report ? 'Regenerate Report' : 'Generate Report'}
               </Button>

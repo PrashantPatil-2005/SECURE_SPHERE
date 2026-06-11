@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Download, FileJson, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -60,11 +61,14 @@ export default function EventsPage({ events = [] }) {
     return 'table';
   });
 
-  const [search, setSearch] = useState('');
+  // Initial filters can be deep-linked via query params (?severity=, ?src=, ?q=),
+  // e.g. from the command palette "Filter ·" presets or Header search.
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
   const [layer, setLayer] = useState('all');
-  const [severity, setSeverity] = useState('all');
+  const [severity, setSeverity] = useState(() => searchParams.get('severity') || 'all');
   const [timePreset, setTimePreset] = useState('all');
-  const [srcIp, setSrcIp] = useState('all');
+  const [srcIp, setSrcIp] = useState(() => searchParams.get('src') || 'all');
   const [timeRange, setTimeRange] = useState(null);
   const [ribbonBin, setRibbonBin] = useState(null);
 

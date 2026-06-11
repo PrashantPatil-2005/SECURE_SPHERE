@@ -78,6 +78,20 @@ export const api = {
       .then(normalizeTopology),
   getSystemStatus: () => request('/api/system/status'),
   getProxyConfig: () => request('/api/config/proxy'),
+  getDiscordConfig: () =>
+    authFetch(`${BASE}/api/config/discord`).then(r => r.json()),
+  setDiscordConfig: (url) =>
+    authFetch(`${BASE}/api/config/discord`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    }).then(r => r.json()),
+  testDiscordWebhook: (url) =>
+    authFetch(`${BASE}/api/config/discord/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    }).then(r => r.json()),
   setProxyConfig: (payload) =>
     authFetch(`${BASE}/api/config/proxy`, {
       method: 'POST',
@@ -88,6 +102,19 @@ export const api = {
       if (!r.ok) throw new Error(j.message || `API ${r.status}`);
       return j;
     }),
+  // Real WAF block: read the current proxy config, merge the IP into the
+  // ip_blocklist, and persist it. Admin-only on the backend (set_proxy_config).
+  blockIp: async (ip) => {
+    const entry = String(ip || '').trim();
+    if (!entry) throw new Error('No IP provided');
+    const data = await api.getProxyConfig();
+    const current = Array.isArray(data?.config?.ip_blocklist) ? data.config.ip_blocklist : [];
+    if (current.includes(entry)) {
+      return { status: 'success', ip: entry, already: true };
+    }
+    const res = await api.setProxyConfig({ ip_blocklist: [...current, entry] });
+    return { ...res, ip: entry };
+  },
   getMitreMapping: () => request('/api/mitre-mapping'),
   getMitreCoverage: () => request('/api/v2/mitre/coverage'),
   getAuditLogs: (params = {}) => {

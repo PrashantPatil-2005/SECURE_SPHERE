@@ -183,7 +183,7 @@ function CampaignDrawer({ campaign, onClose }) {
     setErr(null);
     setLoading(true);
     api.getCampaign(campaign.campaign_id)
-      .then((r) => setDetail(r?.data))
+      .then((r) => setDetail(r))
       .catch((e) => setErr(e.message || 'Failed to load campaign'))
       .finally(() => setLoading(false));
   }, [campaign]);
@@ -364,8 +364,8 @@ export default function Campaigns() {
         api.getCampaigns({ status: statusFilter, severity: severityFilter, limit: 100 }),
         api.getCampaignStats(),
       ]);
-      setCampaigns(list?.data?.campaigns || []);
-      setStats(st?.data || null);
+      setCampaigns(list?.campaigns || []);
+      setStats(st || null);
     } catch (e) {
       setErr(e.message || 'Failed to load campaigns');
     } finally {
@@ -389,7 +389,7 @@ export default function Campaigns() {
   );
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4">
       <motion.div {...anim} className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-base-100 flex items-center gap-2">
@@ -425,7 +425,7 @@ export default function Campaigns() {
                 className={cn(
                   'px-2.5 py-1 text-xs rounded font-medium border transition-colors',
                   statusFilter === f.key
-                    ? 'bg-accent text-base-950 border-accent'
+                    ? 'bg-accent text-white border-accent'
                     : 'bg-base-900 text-base-300 border-base-700 hover:border-accent/40',
                 )}
               >
@@ -441,7 +441,7 @@ export default function Campaigns() {
                 className={cn(
                   'px-2.5 py-1 text-xs rounded font-medium border transition-colors',
                   severityFilter === f.key
-                    ? 'bg-accent text-base-950 border-accent'
+                    ? 'bg-accent text-white border-accent'
                     : 'bg-base-900 text-base-300 border-base-700 hover:border-accent/40',
                 )}
               >

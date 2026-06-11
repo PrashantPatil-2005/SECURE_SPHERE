@@ -54,7 +54,7 @@ function isTypingTarget(el) {
 }
 
 export default function AuthenticatedApp() {
-  const { logout: authLogout } = useAuth();
+  const { logout: authLogout, role } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = tabIdFromPath(location.pathname);
@@ -167,6 +167,49 @@ export default function AuthenticatedApp() {
       run: () => setNotifOpen(true),
     },
     {
+      id: 'filter-critical',
+      section: 'Filter',
+      label: 'Filter · severity:critical',
+      detail: 'Open Events filtered to critical severity',
+      keywords: 'filter severity critical sev',
+      run: () => navigate('/events?severity=critical'),
+    },
+    {
+      id: 'filter-src',
+      section: 'Filter',
+      label: 'Filter · source IP…',
+      detail: 'Open Events filtered to a source IP',
+      keywords: 'filter src ip source address',
+      run: () => {
+        const ip = window.prompt('Filter Events by source IP:', '10.0.2.4');
+        const v = ip?.trim();
+        if (v) navigate(`/events?src=${encodeURIComponent(v)}`);
+      },
+    },
+    {
+      id: 'block-ip',
+      section: 'Actions',
+      label: 'Block IP (WAF blocklist)…',
+      detail: role === 'admin' ? 'Add an IP to the WAF ip_blocklist' : 'Requires admin role',
+      keywords: 'block ip ban firewall waf blocklist deny',
+      run: async () => {
+        if (role !== 'admin') {
+          toast.error('Blocking an IP requires the admin role.');
+          return;
+        }
+        const ip = window.prompt('IP / CIDR to block via the WAF:', '10.0.2.4');
+        const v = ip?.trim();
+        if (!v) return;
+        try {
+          const res = await api.blockIp(v);
+          if (res?.already) toast.info(`${v} is already in the WAF blocklist.`);
+          else toast.success(`Blocked ${v} — WAF blocklist updated.`);
+        } catch (e) {
+          toast.error(`Block failed: ${e?.message || 'unknown error'}`);
+        }
+      },
+    },
+    {
       id: 'go-settings',
       section: 'Navigate',
       label: 'Go to Settings',
@@ -190,11 +233,10 @@ export default function AuthenticatedApp() {
       keywords: 'logout signout exit quit',
       run: () => handleLogout(),
     },
-  ]), [theme, soundEnabled, toggleTheme, toggleSound, toggleDensity, navigate, handleLogout, toast]);
+  ]), [theme, soundEnabled, toggleTheme, toggleSound, toggleDensity, navigate, handleLogout, toast, role]);
 
   const palette = useCommandPalette({
     onNavigate: goTab,
-    onToast: (msg) => toast.info(msg),
     extraCommands: extraPaletteCommands,
   });
 
@@ -385,7 +427,14 @@ export default function AuthenticatedApp() {
                     </ProtectedRoute>
                   )}
                 />
-                <Route path="/users" element={<UserManagement />} />
+                <Route
+                  path="/users"
+                  element={(
+                    <ProtectedRoute roles={['admin']}>
+                      <UserManagement />
+                    </ProtectedRoute>
+                  )}
+                />
                 <Route
                   path="/system"
                   element={(

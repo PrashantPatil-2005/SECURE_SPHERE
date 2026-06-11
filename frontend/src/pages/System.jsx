@@ -11,6 +11,9 @@ const anim = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, tr
 
 export default function System({ systemStatus = {}, onRefresh }) {
   const [webhook, setWebhook] = useState('');
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookTesting, setWebhookTesting] = useState(false);
+  const [webhookMsg, setWebhookMsg] = useState(null);
 
   // ── Protected Asset / WAF proxy state ────────────────────────────────
   const [proxyCfg, setProxyCfg] = useState(null);
@@ -56,6 +59,42 @@ export default function System({ systemStatus = {}, onRefresh }) {
     const id = setInterval(fetchProxy, 5000);
     return () => clearInterval(id);
   }, [fetchProxy]);
+
+  useEffect(() => {
+    api.getDiscordConfig()
+      .then((res) => { if (res?.url) setWebhook(res.url); })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveWebhook = async () => {
+    setWebhookSaving(true);
+    setWebhookMsg(null);
+    try {
+      const res = await api.setDiscordConfig(webhook.trim());
+      setWebhookMsg(res?.status === 'success'
+        ? { type: 'ok', text: 'Webhook saved.' }
+        : { type: 'err', text: res?.message || 'Save failed' });
+    } catch (e) {
+      setWebhookMsg({ type: 'err', text: e.message });
+    } finally {
+      setWebhookSaving(false);
+    }
+  };
+
+  const handleTestWebhook = async () => {
+    setWebhookTesting(true);
+    setWebhookMsg(null);
+    try {
+      const res = await api.testDiscordWebhook(webhook.trim());
+      setWebhookMsg(res?.status === 'success'
+        ? { type: 'ok', text: 'Test message sent to Discord.' }
+        : { type: 'err', text: res?.message || 'Test failed' });
+    } catch (e) {
+      setWebhookMsg({ type: 'err', text: e.message });
+    } finally {
+      setWebhookTesting(false);
+    }
+  };
 
   const parseList = (text) =>
     text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
@@ -219,10 +258,11 @@ export default function System({ systemStatus = {}, onRefresh }) {
             <label className="text-[11px] font-medium text-base-300">Upstream URL (site to protect)</label>
             <div className="flex gap-2">
               <Input
+                mono
                 placeholder="https://your-site.example.com"
                 value={upstreamInput}
                 onChange={(e) => setUpstreamInput(e.target.value)}
-                className="flex-1 text-xs"
+                className="flex-1"
               />
               <Button variant="primary" size="sm" onClick={handleSaveProxy} disabled={saving || !upstreamInput.trim()}>
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />}
@@ -462,23 +502,49 @@ export default function System({ systemStatus = {}, onRefresh }) {
           <CardContent className="flex flex-col gap-3">
             <div>
               <label className="text-[11px] text-base-400 mb-1 block">WebSocket URL</label>
-              <Input defaultValue="ws://localhost:8000" readOnly className="text-xs opacity-60" />
+              <Input mono defaultValue="ws://localhost:8000" readOnly className="opacity-60" />
             </div>
             <div>
               <label className="text-[11px] text-base-400 mb-1 block">Refresh Interval</label>
-              <Input defaultValue="15000" type="number" className="text-xs" />
+              <Input mono defaultValue="15000" type="number" />
             </div>
             <div>
               <label className="text-[11px] text-base-400 mb-1 block">Discord Webhook</label>
               <div className="flex gap-2">
                 <Input
+                  mono
                   placeholder="https://discord.com/api/webhooks/..."
                   value={webhook}
                   onChange={e => setWebhook(e.target.value)}
-                  className="text-xs flex-1"
+                  className="flex-1"
                 />
-                <Button variant="secondary" size="sm">Test</Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleSaveWebhook}
+                  disabled={webhookSaving || !webhook.trim()}
+                >
+                  {webhookSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleTestWebhook}
+                  disabled={webhookTesting || !webhook.trim()}
+                >
+                  {webhookTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Test'}
+                </Button>
               </div>
+              {webhookMsg && (
+                <div className={cn(
+                  'mt-1.5 rounded px-2 py-1 text-[11px]',
+                  webhookMsg.type === 'ok'
+                    ? 'text-emerald-300'
+                    : 'text-red-300',
+                )}>
+                  {webhookMsg.text}
+                </div>
+              )}
             </div>
 
             <div className="mt-2">

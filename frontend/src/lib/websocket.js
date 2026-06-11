@@ -41,6 +41,7 @@ export function connectSocket(handlers) {
   socket.on('initial_state', (data) => handlers.onInitialState?.(data));
   socket.on('full_refresh', () => handlers.onFullRefresh?.());
   socket.on('incident_status_change', (data) => handlers.onIncidentStatusChange?.(data));
+  socket.on('campaign_escalated', (data) => handlers.onCampaignEscalated?.(data));
 
   return socket;
 }

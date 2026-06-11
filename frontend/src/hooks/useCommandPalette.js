@@ -5,10 +5,9 @@ import { useAuth } from '@/contexts/AuthProvider';
 /**
  * @param {object} opts
  * @param {(tabId: string) => void} opts.onNavigate
- * @param {(message: string) => void} [opts.onToast] — optional feedback for filter/action stubs
  * @param {Array<{id:string,section:string,label:string,detail?:string,keywords?:string,run:Function}>} [opts.extraCommands]
  */
-export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
+export function useCommandPalette({ onNavigate, extraCommands = [] }) {
   const { role } = useAuth();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -16,8 +15,6 @@ export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
   const inputRef = useRef(null);
 
   const commands = useMemo(() => {
-    const toast = (msg) => onToast?.(msg);
-
     const navigate = (id) => {
       onNavigate(id);
       setOpen(false);
@@ -34,59 +31,8 @@ export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
       run: () => navigate(item.id),
     }));
 
-    const filterCmds = [
-      {
-        id: 'filter-critical',
-        section: 'Filter',
-        label: 'Filter · severity:critical',
-        detail: 'Opens Events with critical focus (demo)',
-        keywords: 'filter severity critical sev',
-        run: () => {
-          toast('Filter preset: severity:critical — refine in Events filters when available.');
-          navigate('events');
-        },
-      },
-      {
-        id: 'filter-src',
-        section: 'Filter',
-        label: 'Filter · src:10.0.2.4',
-        detail: 'Example source IP filter',
-        keywords: 'filter src ip source 10.0.2.4',
-        run: () => {
-          toast('Filter preset: src:10.0.2.4');
-          navigate('events');
-        },
-      },
-    ];
-
-    const actionCmds = [
-      {
-        id: 'replay-demo',
-        section: 'Actions',
-        label: 'Replay · inc_0c1f (demo)',
-        detail: 'Jump to topology for replay workflows',
-        keywords: 'replay incident kill chain',
-        run: () => {
-          toast('Opening topology for replay context.');
-          navigate('topology');
-        },
-      },
-      {
-        id: 'block-ip',
-        section: 'Actions',
-        label: 'Block IP…',
-        detail: 'Queue block workflow (integration stub)',
-        keywords: 'block ip ban firewall',
-        run: () => {
-          const ip = window.prompt('IP address to block (demo stub):', '10.0.2.4');
-          if (ip?.trim()) toast(`Action queued: block IP ${ip.trim()} (stub — wire to SOAR/playbooks).`);
-          setOpen(false);
-          setQuery('');
-          setHighlight(0);
-        },
-      },
-    ];
-
+    // App-specific commands (filters, real actions like WAF block) are supplied
+    // by the caller via extraCommands so the hook stays free of business logic.
     const wrapped = (extraCommands || []).map((c) => ({
       ...c,
       run: () => {
@@ -98,8 +44,8 @@ export function useCommandPalette({ onNavigate, onToast, extraCommands = [] }) {
       },
     }));
 
-    return [...navCmds, ...wrapped, ...filterCmds, ...actionCmds];
-  }, [onNavigate, onToast, extraCommands, role]);
+    return [...navCmds, ...wrapped];
+  }, [onNavigate, extraCommands, role]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

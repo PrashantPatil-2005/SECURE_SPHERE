@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
@@ -164,13 +165,12 @@ export default function Evaluation() {
   }));
 
   return (
-    <div className="min-h-screen bg-base-950 px-6 py-8 text-base-200">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25 }}
-        className="mx-auto flex max-w-6xl flex-col gap-6"
-      >
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="flex max-w-6xl flex-col gap-6"
+    >
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-base-100">Evaluation Results</h1>
@@ -178,7 +178,7 @@ export default function Evaluation() {
               MTTD reduction across three named kill-chain scenarios. Reviewer-facing summary.
             </p>
           </div>
-          <a href="/dashboard" className="text-xs text-accent hover:underline">Back to dashboard</a>
+          <Link to="/dashboard" className="text-xs text-accent hover:underline">Back to dashboard</Link>
         </header>
 
         {/* Section 1 — Hero */}
@@ -314,7 +314,6 @@ export default function Evaluation() {
             </details>
           </CardContent>
         </Card>
-      </motion.div>
-    </div>
+    </motion.div>
   );
 }

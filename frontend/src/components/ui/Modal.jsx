@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from './button';
 
 const SIZE = {
   sm: 'max-w-[400px]',
@@ -117,23 +118,16 @@ export function ConfirmModal({ open, onClose, onConfirm, title, message, confirm
       size="sm"
       footer={
         <>
-          <button
-            onClick={onClose}
-            className="h-8 rounded-lg border border-base-800 bg-base-950/40 px-3 text-xs text-base-300 hover:bg-base-800 transition-colors"
-          >
+          <Button variant="secondary" size="sm" onClick={onClose}>
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={danger ? 'danger' : 'primary'}
+            size="sm"
             onClick={() => { onConfirm?.(); onClose?.(); }}
-            className={cn(
-              'h-8 rounded-lg px-3 text-xs font-semibold transition-colors',
-              danger
-                ? 'border border-red-500/40 bg-red-500/15 text-red-200 hover:bg-red-500/25'
-                : 'bg-accent text-base-950 hover:bg-accent-hover'
-            )}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </>
       }
     >

@@ -1,4 +1,4 @@
-/** @typedef {'dashboard'|'events'|'incidents'|'campaigns'|'evaluation'|'topology'|'risk'|'mitre'|'audit'|'system'|'users'} TabId */
+/** @typedef {'dashboard'|'events'|'incidents'|'campaigns'|'evaluation'|'topology'|'risk'|'mitre'|'replay'|'audit'|'system'|'users'|'settings'} TabId */
 
 /**
  * @typedef NavItem
@@ -34,11 +34,12 @@ export const NAV_ITEMS = [
   { id: 'audit', label: 'Audit', path: '/audit', section: 'security', roles: ['admin'] },
   { id: 'users', label: 'Users', path: '/users', section: 'system', roles: ['admin'] },
   { id: 'system', label: 'System', path: '/system', section: 'system', roles: ['admin'] },
+  { id: 'settings', label: 'Settings', path: '/settings', section: 'system', roles: ['admin', 'analyst', 'viewer'] },
 ];
 
-/** ⚡ Derived maps (computed once) */
+/** ⚡ Derived maps (computed once at module load) */
 const PATH_MAP = new Map(NAV_ITEMS.map((i) => [i.id, i.path]));
-const ID_MAP = new Map(NAV_ITEMS.map((i) => [i.path, i.id]));
+const ID_MAP = new Map(NAV_ITEMS.map((i) => [i.path, i.id])); // eslint-disable-line no-unused-vars
 
 /**
  * O(1) lookup

@@ -11,6 +11,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Hexagon,
+  Target,
+  FlaskConical,
+  RotateCcw,
+  ScrollText,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { navItemsForRole } from './navConfig';
@@ -18,22 +23,53 @@ import { useAuth } from '@/contexts/AuthProvider';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 const ICONS = {
-  dashboard: LayoutDashboard,
-  events: Activity,
-  incidents: AlertTriangle,
-  topology: Network,
-  risk: Gauge,
-  mitre: Shield,
-  users: Users,
-  system: Server,
+  dashboard:  LayoutDashboard,
+  events:     Activity,
+  incidents:  AlertTriangle,
+  campaigns:  Target,
+  evaluation: FlaskConical,
+  topology:   Network,
+  risk:       Gauge,
+  mitre:      Shield,
+  replay:     RotateCcw,
+  audit:      ScrollText,
+  users:      Users,
+  system:     Server,
+  settings:   Settings,
+};
+
+const SECTION_LABELS = {
+  core:     null,
+  analysis: 'Analysis',
+  infra:    'Infrastructure',
+  security: 'Security',
+  system:   'System',
 };
 
 const COLLAPSED_KEY = 'securisphere-sidebar-collapsed';
 
+function groupBySection(items) {
+  const groups = [];
+  let last = null;
+  for (const item of items) {
+    if (item.section !== last) {
+      last = item.section;
+      groups.push({ section: item.section, items: [] });
+    }
+    groups[groups.length - 1].items.push(item);
+  }
+  return groups;
+}
+
 export default function SidebarNav({ badges = {} }) {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const navItems = navItemsForRole(role);
   const [collapsed, setCollapsed] = useLocalStorage(COLLAPSED_KEY, false);
+
+  const groups = groupBySection(navItems);
+  const userInitial = (user?.username?.[0] || user?.email?.[0] || 'U').toUpperCase();
+  const userName = user?.username || user?.email || 'User';
+  const userRole = (user?.role || role || 'viewer').toLowerCase();
 
   return (
     <aside
@@ -43,42 +79,36 @@ export default function SidebarNav({ badges = {} }) {
         collapsed ? 'w-[60px]' : 'w-[200px]'
       )}
     >
-      {/* Logo block */}
+      {/* ── Logo ──────────────────────────────────────────────────────── */}
       <div
         className={cn(
           'flex items-center border-b border-base-800',
-          collapsed ? 'justify-center px-2 py-3' : 'justify-between px-4 py-[14px]'
+          collapsed ? 'justify-center px-2 py-3' : 'justify-between px-3.5 py-[14px]'
         )}
       >
         <div className={cn('flex items-center', collapsed ? 'gap-0' : 'gap-2.5')}>
           <div
-            className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border text-sev-critical"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border shrink-0"
             style={{
               borderColor: 'var(--sev-critical-border)',
-              background:
-                'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))',
+              background: 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))',
             }}
           >
-            <Hexagon className="h-3.5 w-3.5" />
+            <Hexagon className="h-3.5 w-3.5" style={{ color: 'var(--sev-critical)' }} />
           </div>
           {!collapsed && (
-            <div className="leading-tight">
-              <div className="text-[13px] font-bold tracking-tight text-base-100">
-                SecuriSphere
-              </div>
-              <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-base-600">
-                v2.0 · SOC
-              </div>
+            <div className="leading-tight min-w-0">
+              <div className="text-sm font-bold tracking-tight text-base-100">SecuriSphere</div>
+              <div className="type-eyebrow font-mono text-base-600">v2.0 · SOC</div>
             </div>
           )}
         </div>
 
         {!collapsed && (
           <button
-            onClick={() => setCollapsed((c) => !c)}
+            onClick={() => setCollapsed(true)}
             aria-label="Collapse sidebar"
-            aria-expanded
-            className="flex h-6 w-6 items-center justify-center rounded-md border border-base-800 bg-base-950 text-base-500 transition-all hover:border-base-700 hover:text-base-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-base-800 bg-base-900 text-base-500 transition-all hover:border-base-700 hover:text-base-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
@@ -89,109 +119,163 @@ export default function SidebarNav({ badges = {} }) {
         <button
           onClick={() => setCollapsed(false)}
           aria-label="Expand sidebar"
-          className="mx-auto mt-2 flex h-6 w-6 items-center justify-center rounded-md border border-base-800 bg-base-950 text-base-500 transition-all hover:border-base-700 hover:text-base-200"
+          className="mx-auto mt-2 flex h-6 w-6 items-center justify-center rounded-md border border-base-800 bg-base-900 text-base-500 transition-all hover:border-base-700 hover:text-base-200"
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
       )}
 
-      {/* Nav */}
+      {/* ── Nav ───────────────────────────────────────────────────────── */}
       <nav
         aria-label="Primary"
-        className={cn('flex flex-1 flex-col gap-0.5 overflow-y-auto', collapsed ? 'px-1.5 py-2' : 'px-2 py-2')}
-      >
-        {!collapsed && (
-          <div className="mb-1.5 px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-base-600">
-            Navigation
-          </div>
+        className={cn(
+          'flex flex-1 flex-col overflow-y-auto',
+          collapsed ? 'px-1.5 py-2' : 'px-2 py-2'
         )}
-        {navItems.map((item) => {
-          const Icon = ICONS[item.id] ?? LayoutDashboard;
-          const badge = badges[item.id];
-          const showSevBadge = item.id === 'incidents' && typeof badge === 'number' && badge > 0;
+      >
+        {groups.map(({ section, items }, gi) => (
+          <div key={section}>
+            {/* Section separator */}
+            {gi > 0 && (
+              <div className={cn('mx-1 my-1.5', collapsed ? '' : '')}>
+                {collapsed ? (
+                  <div className="h-px bg-base-800" />
+                ) : (
+                  <div className="flex items-center gap-2 px-1 py-0.5">
+                    <div className="h-px flex-1 bg-base-800" />
+                    {SECTION_LABELS[section] && (
+                      <span className="type-eyebrow font-mono text-base-600 select-none">
+                        {SECTION_LABELS[section]}
+                      </span>
+                    )}
+                    <div className="h-px flex-1 bg-base-800" />
+                  </div>
+                )}
+              </div>
+            )}
 
-          return (
-            <NavLink
-              key={item.id}
-              to={item.path}
-              title={collapsed ? item.label : undefined}
-              className={({ isActive }) =>
-                cn(
-                  'group relative flex items-center rounded-lg text-[12px] transition-all duration-150',
-                  'focus:outline-none focus-visible:ring-1 focus-visible:ring-accent',
-                  collapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-2.5 py-[7px]',
-                  isActive
-                    ? 'bg-white/[0.06] font-semibold text-base-100 shadow-[inset_0_0_0_1px_rgba(250,250,250,0.08),0_0_18px_-4px_rgba(250,250,250,0.1)]'
-                    : 'text-base-500 hover:bg-white/[0.03] hover:text-base-300'
-                )
-              }
-            >
-              <Icon className="h-[15px] w-[15px] shrink-0" />
+            {/* Items */}
+            <div className="flex flex-col gap-0.5">
+              {items.map((item) => {
+                const Icon = ICONS[item.id] ?? LayoutDashboard;
+                const badge = badges[item.id];
+                const isCriticalBadge = item.id === 'incidents' && typeof badge === 'number' && badge > 0;
 
-              {!collapsed && (
-                <span className="flex-1 truncate">{item.label}</span>
-              )}
+                return (
+                  <NavLink
+                    key={item.id}
+                    to={item.path}
+                    end={item.path === '/dashboard'}
+                    title={collapsed ? item.label : undefined}
+                    className="relative block rounded-[8px] focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {/* Left accent bar */}
+                        {isActive && (
+                          <span className="pointer-events-none absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-accent" />
+                        )}
 
-              {!collapsed && showSevBadge && (
-                <span
-                  className="rounded-full px-1.5 text-[9px] font-bold"
-                  style={{
-                    background: 'var(--sev-critical-bg)',
-                    border: `1px solid var(--sev-critical-border)`,
-                    color: 'var(--sev-critical)',
-                  }}
-                >
-                  {badge > 99 ? '99+' : badge}
-                </span>
-              )}
+                        <div
+                          className={cn(
+                            'flex items-center rounded-[8px] text-xs transition-all duration-150',
+                            collapsed ? 'justify-center p-2.5' : 'gap-2.5 px-2.5 py-2',
+                            isActive
+                              ? 'bg-accent/[0.09] font-semibold text-base-100'
+                              : 'font-medium text-base-500 hover:bg-white/[0.04] hover:text-base-300'
+                          )}
+                        >
+                          <Icon
+                            className={cn(
+                              'h-[15px] w-[15px] shrink-0 transition-colors',
+                              isActive ? 'text-accent' : ''
+                            )}
+                          />
 
-              {!collapsed && !showSevBadge && typeof badge === 'number' && badge > 0 && (
-                <span className="rounded bg-base-800 px-1.5 text-[10px] text-base-300">
-                  {badge > 99 ? '99+' : badge}
-                </span>
-              )}
+                          {!collapsed && (
+                            <span className="flex-1 truncate">{item.label}</span>
+                          )}
 
-              {collapsed && typeof badge === 'number' && badge > 0 && (
-                <span
-                  className={cn(
-                    'absolute right-1 top-1 rounded-full px-1 text-[9px] font-bold',
-                    showSevBadge ? '' : 'bg-base-800 text-base-300'
-                  )}
-                  style={
-                    showSevBadge
-                      ? {
-                          background: 'var(--sev-critical-bg)',
-                          border: '1px solid var(--sev-critical-border)',
-                          color: 'var(--sev-critical)',
-                        }
-                      : undefined
-                  }
-                >
-                  {badge > 99 ? '99+' : badge}
-                </span>
-              )}
+                          {/* Badges — expanded */}
+                          {!collapsed && isCriticalBadge && (
+                            <span
+                              className="rounded-full px-1.5 text-2xs font-bold leading-none"
+                              style={{
+                                background: 'var(--sev-critical-bg)',
+                                border: '1px solid var(--sev-critical-border)',
+                                color: 'var(--sev-critical)',
+                              }}
+                            >
+                              {badge > 99 ? '99+' : badge}
+                            </span>
+                          )}
 
-              {collapsed && (
-                <span className="pointer-events-none absolute left-full z-50 ml-2 whitespace-nowrap rounded-md border border-base-800 bg-base-950 px-2 py-1 text-xs text-base-200 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                  {item.label}
-                </span>
-              )}
-            </NavLink>
-          );
-        })}
+                          {!collapsed && !isCriticalBadge && typeof badge === 'number' && badge > 0 && (
+                            <span className="type-data rounded bg-base-800 px-1.5 text-2xs text-base-400">
+                              {badge > 99 ? '99+' : badge}
+                            </span>
+                          )}
+
+                          {/* Badges — collapsed */}
+                          {collapsed && typeof badge === 'number' && badge > 0 && (
+                            <span
+                              className={cn('absolute right-0.5 top-0.5 min-w-[14px] rounded-full px-0.5 text-center text-[8px] font-bold leading-[14px]')}
+                              style={
+                                isCriticalBadge
+                                  ? {
+                                      background: 'var(--sev-critical)',
+                                      color: '#fff',
+                                    }
+                                  : { background: 'var(--base-700)', color: 'var(--base-300)' }
+                              }
+                            >
+                              {badge > 9 ? '9+' : badge}
+                            </span>
+                          )}
+
+                          {/* Collapsed tooltip */}
+                          {collapsed && (
+                            <span className="pointer-events-none absolute left-full z-50 ml-2.5 whitespace-nowrap rounded-lg border border-base-800 bg-base-900 px-2.5 py-1.5 text-xs text-base-200 opacity-0 shadow-xl transition-opacity group-hover:opacity-100 [.group:hover_&]:opacity-100">
+                              {item.label}
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      {/* Analyst footer */}
+      {/* ── User footer ───────────────────────────────────────────────── */}
       {!collapsed && (
-        <div className="border-t border-base-800 px-3 py-2.5">
-          <div className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2 py-1.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-base-800 text-[10px] font-bold text-base-400">
-              A
+        <div className="border-t border-base-800 px-2.5 py-2.5">
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.03]">
+            <div
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+              style={{ background: 'linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 50%, transparent))' }}
+            >
+              {userInitial}
             </div>
-            <div className="leading-tight">
-              <div className="text-[11px] font-semibold text-base-300">Analyst</div>
-              <div className="text-[9px] text-base-600">SOC Tier 2</div>
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-xs font-semibold text-base-300">{userName}</div>
+              <div className="type-eyebrow text-base-600">{userRole}</div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {collapsed && (
+        <div className="border-t border-base-800 px-1.5 py-2">
+          <div
+            className="mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white"
+            style={{ background: 'linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 50%, transparent))' }}
+            title={`${userName} (${userRole})`}
+          >
+            {userInitial}
           </div>
         </div>
       )}

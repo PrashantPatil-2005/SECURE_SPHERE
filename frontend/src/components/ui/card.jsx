@@ -18,14 +18,24 @@ export function Card({ children, className, glow, ...props }) {
 
 export function CardHeader({ children, className }) {
   return (
-    <div className={cn('flex items-center justify-between border-b border-base-800 px-4 py-3', className)}>
+    <div
+      className={cn(
+        'flex min-h-[44px] items-center justify-between border-b border-base-800 px-4 py-2.5',
+        'bg-white/[0.015]',
+        className
+      )}
+    >
       {children}
     </div>
   );
 }
 
 export function CardTitle({ children, className }) {
-  return <h3 className={cn('text-sm font-semibold text-base-100', className)}>{children}</h3>;
+  return (
+    <h3 className={cn('type-eyebrow text-base-400', className)}>
+      {children}
+    </h3>
+  );
 }
 
 export function CardContent({ children, className }) {

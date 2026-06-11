@@ -63,7 +63,7 @@ export default function RiskScores({ riskScores }) {
       </div>
 
       {entries.length > 0 ? (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {entries.map(([service, data]) => {
             const score = data?.current_score || 0;
             const level = data?.threat_level?.toLowerCase() || 'normal';

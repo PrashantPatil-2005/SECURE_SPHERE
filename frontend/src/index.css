@@ -3,12 +3,13 @@
 @tailwind utilities;
 
 /* ── SecuriSphere — light (:root) / dark (.dark on <html>) ─────────────
-   All UI should use `base-*` tokens so surfaces swap cleanly. */
+   All UI should use `base-*` tokens so surfaces swap cleanly.
+   Accent is now indigo — it carries all interactive-state colour. */
 
 :root {
   color-scheme: light;
-  /* Light — white-based */
-  --base-50: #0a0a0a;
+  /* Light — white-based (base-950 = white, base-50 = near-black) */
+  --base-50:  #0a0a0a;
   --base-100: #171717;
   --base-200: #262626;
   --base-300: #404040;
@@ -19,65 +20,68 @@
   --base-800: #e5e7eb;
   --base-900: #f9fafb;
   --base-950: #ffffff;
-  --accent: #0a0a0a;
-  --accent-hover: #171717;
-  --accent-muted: rgba(10, 10, 10, 0.06);
+  /* Indigo accent — light mode */
+  --accent:       #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-muted: rgba(79, 70, 229, 0.08);
   --line: #e5e7eb;
 
-  /* Severity (saturated — for primary signal use; ambient labels use base.*) */
-  --sev-critical: #ef4444;
-  --sev-critical-bg: rgba(239, 68, 68, 0.10);
+  /* Severity (saturated — primary signal) */
+  --sev-critical:        #ef4444;
+  --sev-critical-bg:     rgba(239, 68, 68, 0.10);
   --sev-critical-border: rgba(239, 68, 68, 0.32);
-  --sev-high: #f97316;
-  --sev-high-bg: rgba(249, 115, 22, 0.10);
-  --sev-high-border: rgba(249, 115, 22, 0.32);
-  --sev-medium: #eab308;
-  --sev-medium-bg: rgba(234, 179, 8, 0.10);
-  --sev-medium-border: rgba(234, 179, 8, 0.32);
-  --sev-low: #22d3ee;
-  --sev-low-bg: rgba(34, 211, 238, 0.08);
-  --sev-low-border: rgba(34, 211, 238, 0.28);
-  --sev-info: #60a5fa;
-  --sev-info-bg: rgba(96, 165, 250, 0.08);
-  --sev-info-border: rgba(96, 165, 250, 0.28);
+  --sev-high:            #f97316;
+  --sev-high-bg:         rgba(249, 115, 22, 0.10);
+  --sev-high-border:     rgba(249, 115, 22, 0.32);
+  --sev-medium:          #eab308;
+  --sev-medium-bg:       rgba(234, 179, 8, 0.10);
+  --sev-medium-border:   rgba(234, 179, 8, 0.32);
+  --sev-low:             #22d3ee;
+  --sev-low-bg:          rgba(34, 211, 238, 0.08);
+  --sev-low-border:      rgba(34, 211, 238, 0.28);
+  --sev-info:            #60a5fa;
+  --sev-info-bg:         rgba(96, 165, 250, 0.08);
+  --sev-info-border:     rgba(96, 165, 250, 0.28);
 
   /* Architecture layer accents */
   --layer-network: #22d3ee;
-  --layer-api: #a855f7;
-  --layer-auth: #f59e0b;
+  --layer-api:     #a855f7;
+  --layer-auth:    #f59e0b;
   --layer-browser: #34d399;
 }
 
 .dark {
   color-scheme: dark;
-  /* Dark — black-based */
-  --base-50: #fafafa;
-  --base-100: #f5f5f5;
-  --base-200: #e5e5e5;
-  --base-300: #d4d4d4;
-  --base-400: #a3a3a3;
-  --base-500: #737373;
-  --base-600: #525252;
-  --base-700: #404040;
-  --base-800: #222222;
-  --base-900: #111111;
-  --base-950: #0a0a0a;
-  --accent: #fafafa;
-  --accent-hover: #ffffff;
-  --accent-muted: rgba(255, 255, 255, 0.06);
-  --line: #222222;
+  /* Dark — blue-black based for a professional security terminal feel.
+     base-950 is the deepest background; base-800 is the border/divider. */
+  --base-50:  #f0f0ff;
+  --base-100: #e4e4f0;
+  --base-200: #c8c8de;
+  --base-300: #a0a0bc;
+  --base-400: #8080a0;
+  --base-500: #60607e;
+  --base-600: #44445e;
+  --base-700: #30303f;
+  --base-800: #1e1e2c;
+  --base-900: #13131e;
+  --base-950: #0d0d16;
+  /* Indigo accent — dark mode (brighter for contrast on dark surfaces) */
+  --accent:       #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-muted: rgba(129, 140, 248, 0.12);
+  --line: #1e1e2c;
 
-  /* Dark severity — slightly brighter alpha vs light for legibility on near-black */
-  --sev-critical-bg: rgba(239, 68, 68, 0.12);
-  --sev-critical-border: rgba(239, 68, 68, 0.35);
-  --sev-high-bg: rgba(249, 115, 22, 0.12);
-  --sev-high-border: rgba(249, 115, 22, 0.35);
-  --sev-medium-bg: rgba(234, 179, 8, 0.12);
-  --sev-medium-border: rgba(234, 179, 8, 0.35);
-  --sev-low-bg: rgba(34, 211, 238, 0.10);
-  --sev-low-border: rgba(34, 211, 238, 0.30);
-  --sev-info-bg: rgba(96, 165, 250, 0.10);
-  --sev-info-border: rgba(96, 165, 250, 0.30);
+  /* Dark severity — slightly higher alpha for legibility on near-black */
+  --sev-critical-bg:     rgba(239, 68, 68, 0.13);
+  --sev-critical-border: rgba(239, 68, 68, 0.36);
+  --sev-high-bg:         rgba(249, 115, 22, 0.13);
+  --sev-high-border:     rgba(249, 115, 22, 0.36);
+  --sev-medium-bg:       rgba(234, 179, 8, 0.13);
+  --sev-medium-border:   rgba(234, 179, 8, 0.36);
+  --sev-low-bg:          rgba(34, 211, 238, 0.10);
+  --sev-low-border:      rgba(34, 211, 238, 0.30);
+  --sev-info-bg:         rgba(96, 165, 250, 0.10);
+  --sev-info-border:     rgba(96, 165, 250, 0.30);
 }
 
 html {
@@ -91,97 +95,129 @@ html {
 body {
   @apply font-sans bg-base-950 text-base-100 antialiased transition-colors duration-200 ease-in-out;
   overflow-y: scroll;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
 }
 
-/* Scrollbar — thin, subtle, fades in on hover over its container */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* ── Typography scale (design-system roles) ─────────────────────────────
+   Prefer these over ad-hoc text-[Npx] in shell + primitives. */
+
+h1, h2, h3, h4 {
+  @apply font-sans tracking-tight text-base-100;
+  line-height: 1.25;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+
+@layer components {
+  /* Micro uppercase labels — card headers, form fields, section eyebrows */
+  .type-eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-base-500;
+  }
+
+  /* Nav items, toolbar chips, compact UI copy */
+  .type-ui {
+    @apply text-xs font-medium text-base-300;
+  }
+
+  /* Secondary descriptions, helper text */
+  .type-caption {
+    @apply text-xs leading-relaxed text-base-500;
+  }
+
+  /* Counts, IDs, IPs, timestamps, metrics */
+  .type-data {
+    @apply font-mono text-xs tabular-nums text-base-200;
+  }
+
+  /* Large KPI / stat values */
+  .type-metric {
+    @apply font-mono text-3xl font-semibold tabular-nums leading-none tracking-tight;
+  }
+
+  /* Page title in content area */
+  .type-page-title {
+    @apply text-lg font-semibold tracking-tight text-base-100;
+  }
 }
+
+/* Scrollbar — thin, subtle */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--base-500) 22%, transparent);
+  background-color: color-mix(in srgb, var(--base-500) 20%, transparent);
   border-radius: 999px;
-  border: 2px solid transparent;
+  border: 1px solid transparent;
   background-clip: padding-box;
   transition: background-color 220ms ease;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in srgb, var(--base-400) 55%, transparent);
+  background-color: color-mix(in srgb, var(--base-400) 45%, transparent);
 }
 ::-webkit-scrollbar-thumb:active {
   background-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 ::-webkit-scrollbar-corner { background: transparent; }
-
-/* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--base-500) 30%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--base-500) 24%, transparent) transparent;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--base-400) 28%, transparent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--base-100);
 }
-
 .dark ::selection {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(129, 140, 248, 0.18);
   color: var(--base-100);
 }
 
 .font-mono {
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
-
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
+.tabular-nums { font-variant-numeric: tabular-nums; }
 
 .show-annotations [data-annotation] {
-  outline: 1px dashed color-mix(in srgb, var(--base-500) 50%, transparent);
+  outline: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
   outline-offset: 2px;
 }
 
-/* ── Aesthetic surface shadows ───────────────────────────────────────────
-   Adds depth to every card / panel / surface. Shadow tokens switch with
-   theme. Edges get a faint highlight rim so borders read as lit. */
+/* ── Surface depth system ──────────────────────────────────────────────
+   Layered shadows + rim highlights give cards/panels depth without
+   neon effects. Dark mode uses deeper, bluer shadows. */
 
 :root {
   --surface-shadow:
-    0 1px 2px rgba(15, 15, 15, 0.08),
-    0 4px 10px rgba(15, 15, 15, 0.05),
-    0 12px 28px rgba(15, 15, 15, 0.04);
+    0 1px 2px rgba(15, 15, 15, 0.06),
+    0 4px 10px rgba(15, 15, 15, 0.04),
+    0 10px 24px rgba(15, 15, 15, 0.03);
   --surface-shadow-hover:
-    0 1px 2px rgba(15, 15, 15, 0.10),
-    0 6px 16px rgba(15, 15, 15, 0.08),
-    0 22px 42px rgba(15, 15, 15, 0.06);
-  --surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    0 1px 2px rgba(15, 15, 15, 0.08),
+    0 6px 16px rgba(15, 15, 15, 0.07),
+    0 20px 40px rgba(15, 15, 15, 0.05);
+  --surface-rim:   inset 0 1px 0 rgba(255, 255, 255, 0.50);
   --surface-inset: inset 0 0 0 1px rgba(15, 15, 15, 0.02);
 }
 
 .dark {
   --surface-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.55),
-    0 6px 16px rgba(0, 0, 0, 0.45),
-    0 18px 40px rgba(0, 0, 0, 0.35);
+    0 1px 3px rgba(0, 0, 0, 0.50),
+    0 4px 12px rgba(0, 0, 0, 0.40),
+    0 16px 36px rgba(0, 0, 0, 0.30);
   --surface-shadow-hover:
-    0 1px 2px rgba(0, 0, 0, 0.65),
-    0 10px 24px rgba(0, 0, 0, 0.6),
-    0 30px 58px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
-  --surface-rim: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 1px 3px rgba(0, 0, 0, 0.60),
+    0 8px 20px rgba(0, 0, 0, 0.55),
+    0 28px 52px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(129, 140, 248, 0.04);
+  --surface-rim:   inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --surface-inset: inset 0 0 0 1px rgba(255, 255, 255, 0.015);
 }
 
-/* Card + panel surfaces — match every rounded container that uses a base
-   surface + border (the Card/ChartCard/Sidebar/Header pattern). */
+/* Cards — every rounded surface with a base bg gets depth */
 :where(
   .rounded-\[10px\],
   .rounded-lg,
   .rounded-md,
+  .rounded-xl,
+  .rounded-2xl,
   aside,
   header
 ):where(
@@ -193,15 +229,14 @@ body {
   transition: box-shadow 220ms ease, transform 220ms ease, border-color 200ms ease;
 }
 
-/* Card-like containers lift on hover. Targets the Card primitive + any
-   panel built from the same rounded-border-surface trio. */
+/* Hover lift on card-like containers */
 .rounded-\[10px\]:where([class*="border-base-800"], [class*="border-base-900"]):hover,
 .rounded-lg:where([class*="border-base-800"], [class*="border-base-900"]):hover {
   box-shadow: var(--surface-shadow-hover), var(--surface-rim);
   border-color: color-mix(in srgb, var(--base-700) 55%, transparent);
 }
 
-/* Buttons + pill controls — softer drop shadow. */
+/* Buttons — subtle shadow */
 :where(button, a[role="button"]):where(
   [class*="border-base-800"],
   [class*="bg-base-900"],
@@ -226,31 +261,33 @@ body {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28), var(--surface-rim);
 }
 
-/* Active nav link — inset accent halo (reads like backlit). */
+/* Active nav link — indigo inset halo */
 .dark nav a[aria-current="page"],
 nav a[aria-current="page"] {
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
-    0 0 18px -4px color-mix(in srgb, var(--accent) 35%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 14px -4px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-/* Sidebar aside — soft right-edge bleed, gentle in both themes. */
+/* Sidebar right-edge bleed */
 aside:where([class*="border-r"]) {
-  box-shadow: 3px 0 14px -10px rgba(0, 0, 0, 0.18), var(--surface-rim);
+  box-shadow: 2px 0 12px -8px rgba(0, 0, 0, 0.15), var(--surface-rim);
 }
 .dark aside:where([class*="border-r"]) {
-  box-shadow: 4px 0 18px -14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  box-shadow: 3px 0 16px -12px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
-/* Top chrome bar — floating over content. */
+/* Top header floating shadow */
 header:where([class*="border-b"]) {
-  box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.35), var(--surface-rim);
+  box-shadow: 0 4px 14px -8px rgba(0, 0, 0, 0.30), var(--surface-rim);
 }
 .dark header:where([class*="border-b"]) {
-  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 8px 22px -10px rgba(0, 0, 0, 0.70),
+              inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-/* Topology graph edges — violet glow lifts path lines off the canvas. */
+/* Topology edges */
 .topology-links line {
   filter: drop-shadow(0 0 3px rgba(168, 85, 247, 0.55));
   transition: stroke-width 180ms ease, opacity 180ms ease;
@@ -260,20 +297,18 @@ header:where([class*="border-b"]) {
   stroke-width: 2.5 !important;
 }
 
-/* ── Global micro-animations ─────────────────────────────────────────── */
+/* ── Micro-animations ────────────────────────────────────────────────── */
 
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  100% { background-position:  200% 0; }
 }
-
 @keyframes floatSoft {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-3px); }
 }
-
 @keyframes gradientShift {
-  0%, 100% { background-position: 0% 50%; }
+  0%, 100% { background-position: 0%   50%; }
   50%      { background-position: 100% 50%; }
 }
 
@@ -285,25 +320,21 @@ header:where([class*="border-b"]) {
   -webkit-text-fill-color: transparent;
   animation: shimmer 3s linear infinite;
 }
-
-.float-soft { animation: floatSoft 3s ease-in-out infinite; }
-
+.float-soft     { animation: floatSoft 3s ease-in-out infinite; }
 .animated-gradient {
   background-size: 200% 200%;
   animation: gradientShift 8s ease infinite;
 }
 
-/* Smooth focus ring for inputs/buttons */
+/* Focus ring — indigo glow */
 :where(input, textarea, select, button):focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent),
-              0 0 14px -2px color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent),
+              0 0 14px -2px color-mix(in srgb, var(--accent) 25%, transparent);
   transition: box-shadow 160ms ease;
 }
 
-/* Browser autofill — preserve token text/bg in both themes.
-   Webkit fills its own yellow bg + forces text color, hiding typed value.
-   Fixes: paint text via -webkit-text-fill-color, mask bg with inset shadow. */
+/* Autofill */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
@@ -316,10 +347,6 @@ select:-webkit-autofill {
   box-shadow: 0 0 0 1000px var(--base-800) inset;
   transition: background-color 9999s ease-in-out 0s;
 }
-
-/* Ensure all native inputs/textareas inherit visible text color, even when
-   page-level color cascades fail (some forms wrap inputs in colorless divs).
-   Use !important to defeat UA stylesheets that force input text color. */
 input, textarea, select {
   color: var(--base-100) !important;
   caret-color: var(--base-100);
@@ -331,34 +358,32 @@ input::placeholder, textarea::placeholder {
   opacity: 1;
 }
 
-/* Severity dot pulse — colored by CSS var --dot-color */
+/* Severity dot pulse */
 @keyframes dotPulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--dot-color, rgba(239,68,68,0.6)); }
+  0%, 100% { box-shadow: 0 0 0 0   var(--dot-color, rgba(239,68,68,0.6)); }
   70%      { box-shadow: 0 0 0 8px transparent; }
 }
 .dot-pulse { animation: dotPulse 1.8s ease-out infinite; }
 
-/* Row hover lift */
-tr.row-lift, .row-lift {
-  transition: background-color 160ms ease, transform 160ms ease;
-}
+/* Row hover */
+tr.row-lift, .row-lift { transition: background-color 160ms ease, transform 160ms ease; }
 tr.row-lift:hover, .row-lift:hover {
   background-color: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 
-/* Card shine on hover (uses ::after overlay) */
+/* Card shine on hover */
 .shine-on-hover { position: relative; overflow: hidden; }
 .shine-on-hover::after {
   content: '';
   position: absolute; inset: 0;
-  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%);
+  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.05) 50%, transparent 60%);
   transform: translateX(-100%);
   transition: transform 700ms ease;
   pointer-events: none;
 }
 .shine-on-hover:hover::after { transform: translateX(100%); }
 
-/* Reduce motion respect */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
