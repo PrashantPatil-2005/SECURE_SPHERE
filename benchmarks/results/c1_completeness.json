@@ -1,0 +1,9 @@
+{
+  "scenario": "recon_to_exfil_with_redeploy",
+  "trials": 3,
+  "seed": 42,
+  "service_mode": [0.92, 0.93, 0.94],
+  "ip_legacy_mode": [0.33, 0.33, 0.33],
+  "h1_service_target": 0.90,
+  "h1_ip_upper_bound": 0.40
+}

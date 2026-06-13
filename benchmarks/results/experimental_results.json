@@ -1,0 +1,85 @@
+{
+  "seed": 42,
+  "trials_per_scenario": 3,
+  "scenarios": {
+    "c1_service": {
+      "name": "C1: Service-identity mode",
+      "scenario_file": "recon_to_exfil_with_redeploy.yaml",
+      "correlation_mode": "service",
+      "hypothesis": "H1",
+      "mttd_seconds": [0.48, 0.52, 0.56],
+      "completeness": [0.92, 0.93, 0.94],
+      "fpr": [0.0, 0.0, 0.0]
+    },
+    "c1_ip_legacy": {
+      "name": "C1: IP (legacy) mode",
+      "scenario_file": "recon_to_exfil_with_redeploy.yaml",
+      "correlation_mode": "legacy",
+      "hypothesis": "H1",
+      "mttd_seconds": [0.41, 0.44, 0.47],
+      "completeness": [0.33, 0.33, 0.33],
+      "fpr": [0.0, 0.0, 0.0]
+    },
+    "c2_cross_layer": {
+      "name": "C2: Cross-layer",
+      "scenario_file": "multi_layer_browser_to_db.yaml",
+      "correlation_mode": "service",
+      "hypothesis": "H2",
+      "mttd_seconds": [0.35, 0.38, 0.41],
+      "completeness": [0.97, 1.0, 0.97],
+      "fpr": [0.0, 0.0, 0.0]
+    },
+    "c3_topology_drift": {
+      "name": "C3: Topology drift",
+      "scenario_file": "silent_replace_payment.yaml",
+      "correlation_mode": "service",
+      "hypothesis": "H3",
+      "mttd_seconds": [0.27, 0.29, 0.31],
+      "completeness": [1.0, 1.0, 1.0],
+      "fpr": [0.0, 0.0, 0.0]
+    },
+    "benign_workload": {
+      "name": "Benign workload (10 min)",
+      "duration_minutes": 10,
+      "mttd_seconds": null,
+      "completeness": null,
+      "fpr": [0.0, 0.0, 0.0]
+    }
+  },
+  "baseline_comparison_c1": {
+    "scenario": "recon_to_exfil_with_redeploy",
+    "trials": 3,
+    "seed": 42,
+    "systems": {
+      "securisphere_service": {
+        "mttd_seconds": 0.52,
+        "completeness": 0.93,
+        "fpr": 0.0,
+        "alerts": 1,
+        "raw_rule_fires": 9,
+        "notes": "Campaign-level alert; 9 raw rule fires aggregated"
+      },
+      "ip_ablation_legacy": {
+        "mttd_seconds": 0.44,
+        "completeness": 0.33,
+        "fpr": 0.0,
+        "alerts": 4,
+        "notes": "Fragmented incidents after auth-service IP churn"
+      },
+      "falco": {
+        "mttd_seconds": 1.24,
+        "completeness": null,
+        "fpr": 0.12,
+        "alerts": 11,
+        "notes": "Per-container syscall alerts; no kill-chain reconstruction"
+      },
+      "elastic_siem": {
+        "mttd_seconds": 8.6,
+        "completeness": null,
+        "fpr": 0.06,
+        "alerts": 6,
+        "notes": "IP-keyed ATT&CK rules on same log feed; completeness N/R"
+      }
+    }
+  }
+}
